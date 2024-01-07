@@ -113,7 +113,6 @@ impl Obfuscator {
     pub fn null_sec_hdr(&mut self) {
         for i in 0..self.sec_hdr_num {
             let offset = self.sec_hdr_offset + i * self.sec_hdr_size;
-            println!("offset: {:x}", offset);
             for j in offset..offset + self.sec_hdr_size {
                 self.output[j as usize] = 0;
             }

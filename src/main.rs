@@ -15,6 +15,27 @@ struct Args {
     input: String,
     #[arg(short, long, help = "output file name", default_value = "obfuscated")]
     output: String,
+    #[arg(
+        short,
+        long,
+        help = "change architecture class in the ELF",
+        default_value = "false"
+    )]
+    class: bool,
+    #[arg(
+        short,
+        long,
+        help = "change endian in the ELF",
+        default_value = "false"
+    )]
+    endian: bool,
+    #[arg(
+        short,
+        long,
+        help = "nullify section header in the ELF",
+        default_value = "false"
+    )]
+    sechdr: bool,
 }
 
 fn main() -> std::io::Result<()> {
@@ -25,9 +46,17 @@ fn main() -> std::io::Result<()> {
     match obfuscator.is_elf() {
         true => {
             println!("start obfuscating {}...", args.input);
-            obfuscator.change_class();
-            obfuscator.change_endian();
-            obfuscator.null_sec_hdr();
+
+            if args.class == true {
+                obfuscator.change_class();
+            }
+            if args.endian == true {
+                obfuscator.change_endian();
+            }
+            if args.sechdr == true {
+                obfuscator.null_sec_hdr();
+            }
+
             println!("obfuscation done!");
             Ok(())
         }
