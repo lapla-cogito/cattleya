@@ -27,6 +27,7 @@ fn main() -> std::io::Result<()> {
             println!("start obfuscating {}...", args.input);
             obfuscator.change_class();
             obfuscator.change_endian();
+            obfuscator.null_sec_hdr();
             println!("obfuscation done!");
             Ok(())
         }
@@ -34,7 +35,7 @@ fn main() -> std::io::Result<()> {
             eprintln!("not a valid ELF file: {}", args.input);
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
-                "Not a valid ELF file",
+                "not a valid ELF file",
             ));
         }
     }
