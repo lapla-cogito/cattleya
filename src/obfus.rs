@@ -45,8 +45,7 @@ impl Obfuscator {
         let file = match OpenOptions::new().read(true).write(true).open(input_path) {
             Ok(file) => file,
             Err(e) => {
-                eprintln!("failed to open file: {}", e);
-                return Err(e);
+                panic!("failed to open file: {}", e);
             }
         };
 
@@ -58,8 +57,7 @@ impl Obfuscator {
         {
             Ok(file) => file,
             Err(e) => {
-                eprintln!("failed to create file: {}", e);
-                return Err(e);
+                panic!("failed to create file: {}", e);
             }
         };
 

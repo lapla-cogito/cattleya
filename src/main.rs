@@ -61,11 +61,7 @@ fn main() -> std::io::Result<()> {
             Ok(())
         }
         false => {
-            eprintln!("not a valid ELF file: {}", args.input);
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidData,
-                "not a valid ELF file",
-            ));
+            panic!("not a valid ELF file: {}", args.input);
         }
     }
 }
