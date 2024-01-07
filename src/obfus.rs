@@ -34,7 +34,7 @@ const E_SHNUM_START_BYTE: usize = E_SHENTSIZE_START_BYTE + E_SHENTSIZE_SIZE_BYTE
 
 pub struct Obfuscator {
     input: Mmap,
-    output: MmapMut,
+    pub output: MmapMut,
     sec_hdr_num: u64,
     sec_hdr_size: u64,
     sec_hdr_offset: u64,

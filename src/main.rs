@@ -1,6 +1,5 @@
 use clap::Parser;
 use obfus::Obfuscator;
-use std::io::Error;
 
 mod obfus;
 
@@ -63,5 +62,58 @@ fn main() -> std::io::Result<()> {
         false => {
             panic!("not a valid ELF file: {}", args.input);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::obfus::Obfuscator;
+    use std::process::Command;
+
+    #[test]
+    fn not_elf() {
+        let loader = Obfuscator::open("src/main.rs", "bin/res_not_elf");
+        let obfuscator = loader.unwrap();
+        assert_eq!(obfuscator.is_elf(), false);
+    }
+
+    #[test]
+    fn change_class_64bit() {
+        let loader = Obfuscator::open("bin/test_64bit", "bin/res_64bit");
+        let mut obfuscator = loader.unwrap();
+        obfuscator.change_class();
+        assert_eq!(obfuscator.output[4], 1);
+    }
+
+    #[test]
+    fn change_class_32bit() {
+        let loader = Obfuscator::open("bin/test_32bit", "bin/res_32bit");
+        let mut obfuscator = loader.unwrap();
+        obfuscator.change_class();
+        assert_eq!(obfuscator.output[4], 2);
+    }
+
+    #[test]
+    fn change_endian() {
+        let loader = Obfuscator::open("bin/test_64bit", "bin/res_endian");
+        let mut obfuscator = loader.unwrap();
+        obfuscator.change_endian();
+        assert_eq!(obfuscator.output[5], 2);
+    }
+
+    #[test]
+    fn null_sec_hdr() {
+        let loader = Obfuscator::open("bin/test_64bit", "bin/res_sechdr");
+        let mut obfuscator = loader.unwrap();
+        obfuscator.null_sec_hdr();
+        let output = Command::new("readelf")
+            .args(["-S", "bin/res_sechdr"])
+            .output()
+            .expect("failed to execute readelf");
+
+        assert_eq!(
+            String::from_utf8(output.stderr).unwrap(),
+            "readelf: Error: no .dynamic section in the dynamic segment\n"
+        );
     }
 }
