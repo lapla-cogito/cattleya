@@ -46,13 +46,13 @@ fn main() -> std::io::Result<()> {
         true => {
             println!("start obfuscating {}...", args.input);
 
-            if args.class == true {
+            if args.class {
                 obfuscator.change_class();
             }
-            if args.endian == true {
+            if args.endian {
                 obfuscator.change_endian();
             }
-            if args.sechdr == true {
+            if args.sechdr {
                 obfuscator.null_sec_hdr();
             }
 
