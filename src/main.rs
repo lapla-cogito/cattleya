@@ -35,6 +35,8 @@ struct Args {
         default_value = "false"
     )]
     sechdr: bool,
+    #[arg(long, help = "nullify symbols in the ELF", default_value = "false")]
+    symbol: bool,
 }
 
 fn main() -> std::io::Result<()> {
@@ -42,7 +44,7 @@ fn main() -> std::io::Result<()> {
     let loader = Obfuscator::open(&args.input, &args.output);
     let mut obfuscator = loader.unwrap();
 
-    match obfuscator.is_elf() {
+    match obfuscator.is_elf() && obfuscator.is_64bit() {
         true => {
             println!("start obfuscating {}...", args.input);
 
@@ -55,7 +57,9 @@ fn main() -> std::io::Result<()> {
             if args.sechdr {
                 obfuscator.null_sec_hdr();
             }
-
+            if args.symbol {
+                obfuscator.nullfy_symbol_name();
+            }
             println!("obfuscation done!");
             Ok(())
         }
@@ -67,14 +71,14 @@ fn main() -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use crate::obfus::Obfuscator;
+    use crate::obfus::{self, Obfuscator};
+    use memmap::Mmap;
     use std::process::Command;
 
     #[test]
     fn not_elf() {
-        let loader = Obfuscator::open("src/main.rs", "bin/res_not_elf");
-        let obfuscator = loader.unwrap();
-        assert_eq!(obfuscator.is_elf(), false);
+        let file = std::fs::File::open("src/main.rs").unwrap();
+        assert!(unsafe { Mmap::map(&file).unwrap()[0..4] != obfus::HEADER_MAGIC });
     }
 
     #[test]
@@ -83,14 +87,6 @@ mod tests {
         let mut obfuscator = loader.unwrap();
         obfuscator.change_class();
         assert_eq!(obfuscator.output[4], 1);
-    }
-
-    #[test]
-    fn change_class_32bit() {
-        let loader = Obfuscator::open("bin/test_32bit", "bin/res_32bit");
-        let mut obfuscator = loader.unwrap();
-        obfuscator.change_class();
-        assert_eq!(obfuscator.output[4], 2);
     }
 
     #[test]
@@ -114,6 +110,26 @@ mod tests {
         assert_eq!(
             String::from_utf8(output.stderr).unwrap(),
             "readelf: Error: no .dynamic section in the dynamic segment\n"
+        );
+    }
+
+    #[test]
+    fn null_symbol_name() {
+        let loader = Obfuscator::open("bin/test_64bit", "bin/res_symbol");
+        let mut obfuscator = loader.unwrap();
+        obfuscator.nullfy_symbol_name();
+        let output = Command::new("readelf")
+            .args(["-x29", "bin/res_symbol"])
+            .output()
+            .expect("failed to execute readelf");
+
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .trim()
+                .split('\n')
+                .collect::<Vec<&str>>()[1],
+            "  0x00000000 00000000 00000000 00000000 00000000 ................"
         );
     }
 }

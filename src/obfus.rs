@@ -1,7 +1,7 @@
 use memmap::{Mmap, MmapMut};
 use std::{fs::OpenOptions, io::prelude::*, mem};
 
-const HEADER_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
+pub const HEADER_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
 
 const ELF64_ADDR_SIZE: usize = mem::size_of::<u64>();
 const ELF64_OFF_SIZE: usize = mem::size_of::<u64>();
@@ -35,9 +35,11 @@ const E_SHNUM_START_BYTE: usize = E_SHENTSIZE_START_BYTE + E_SHENTSIZE_SIZE_BYTE
 pub struct Obfuscator {
     input: Mmap,
     pub output: MmapMut,
+    sec_hdr: String,
     sec_hdr_num: u64,
     sec_hdr_size: u64,
     sec_hdr_offset: u64,
+    sec_table: u64,
 }
 
 impl Obfuscator {
@@ -74,10 +76,50 @@ impl Obfuscator {
             | (input[E_SHOFF_START_BYTE + 2] as u64) << 16
             | (input[E_SHOFF_START_BYTE + 1] as u64) << 8
             | (input[E_SHOFF_START_BYTE] as u64);
-        let sec_hdr_num = (input[E_SHENTSIZE_START_BYTE + 1] as u64) << 8
-            | (input[E_SHENTSIZE_START_BYTE] as u64);
-        let sec_hdr_size =
+        let sec_hdr_num =
             (input[E_SHNUM_START_BYTE + 1] as u64) << 8 | (input[E_SHNUM_START_BYTE] as u64);
+        let sec_hdr_size = (input[E_SHENTSIZE_START_BYTE + 1] as u64) << 8
+            | (input[E_SHENTSIZE_START_BYTE] as u64);
+
+        let bit64 = input[4] == 2;
+
+        let sec_table = match bit64 {
+            true => u64::from_le_bytes(input[40..48].try_into().unwrap()),
+            false => u32::from_le_bytes(input[32..36].try_into().unwrap()) as u64,
+        };
+
+        let sh_table_header_addr = u16::from_le_bytes(input[62..64].try_into().unwrap()) as usize
+            * sec_hdr_size as usize
+            + sec_table as usize;
+
+        let sh_table_header =
+            &input[sh_table_header_addr..sh_table_header_addr + sec_hdr_size as usize];
+
+        let sh_table_addr =
+            u64::from_le_bytes(sh_table_header[24..32].try_into().unwrap()) as usize;
+
+        let mut curr_strings = -1;
+        let mut index = sh_table_addr;
+        let mut curr_byte;
+
+        while curr_strings < sec_hdr_num as isize {
+            curr_byte = input[index] as isize;
+            if curr_byte == 0 {
+                curr_strings += 1;
+            }
+            index += 1;
+        }
+
+        let mut data_copy: Vec<u8> = vec![0; index - sh_table_addr];
+        data_copy.copy_from_slice(&input[sh_table_addr..index]);
+
+        for byte in &mut data_copy {
+            if *byte == 0 {
+                *byte = b' ';
+            }
+        }
+
+        let sec_hdr = String::from_utf8_lossy(&data_copy).to_string();
 
         Ok(Obfuscator {
             input,
@@ -85,11 +127,35 @@ impl Obfuscator {
             sec_hdr_num,
             sec_hdr_size,
             sec_hdr_offset,
+            sec_table,
+            sec_hdr,
         })
     }
 
     pub fn is_elf(&self) -> bool {
         self.input[0..4] == HEADER_MAGIC
+    }
+
+    pub fn is_64bit(&self) -> bool {
+        self.input[4] == 2
+    }
+
+    pub fn get_section_by_name(&self, section: &str) -> usize {
+        let searched_idx = self.sec_hdr.find(section).unwrap_or(usize::MAX);
+        if searched_idx == usize::MAX {
+            panic!("section not found");
+        }
+
+        for i in 0..self.sec_hdr_num {
+            let sec_hdr = self.input[(self.sec_table + i * self.sec_hdr_size) as usize
+                ..(self.sec_table + (i + 1) * self.sec_hdr_size) as usize]
+                .to_vec();
+            let string_offset = u32::from_le_bytes(sec_hdr[0..4].try_into().unwrap());
+            if string_offset == searched_idx as u32 {
+                return u64::from_le_bytes(sec_hdr[24..32].try_into().unwrap()) as usize;
+            }
+        }
+        usize::MAX
     }
 
     pub fn change_class(&mut self) {
@@ -114,6 +180,13 @@ impl Obfuscator {
             for j in offset..offset + self.sec_hdr_size {
                 self.output[j as usize] = 0;
             }
+        }
+    }
+
+    pub fn nullfy_symbol_name(&mut self) {
+        let strtab_addr = self.get_section_by_name(".strtab");
+        for i in strtab_addr..strtab_addr + (self.sec_hdr_size * self.sec_hdr_num) as usize {
+            self.output[i] = 0;
         }
     }
 }
