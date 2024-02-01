@@ -74,6 +74,38 @@ $ readelf -S obfuscated > /dev/null
 readelf: Error: no .dynamic section in the dynamic segment
 ```
 
+## Nullfy symbol names obfuscation
+
+Erasing symbol names in the target
+
+```
+$ cattleya -i input --symbol
+start obfuscating input...
+obfuscation done!
+
+$ readelf -x29 input
+
+Hex dump of section '.strtab':
+  0x00000000 00536372 74312e6f 005f5f61 62695f74 .Scrt1.o.__abi_t
+  0x00000010 61670063 72747374 7566662e 63006465 ag.crtstuff.c.de
+  0x00000020 72656769 73746572 5f746d5f 636c6f6e register_tm_clon
+  0x00000030 6573005f 5f646f5f 676c6f62 616c5f64 es.__do_global_d
+  0x00000040 746f7273 5f617578 00636f6d 706c6574 tors_aux.complet
+...
+
+$ readelf -x29 obfuscated
+
+readelf: Error: no .dynamic section in the dynamic segment
+
+Hex dump of section '':
+  0x00000000 00000000 00000000 00000000 00000000 ................
+  0x00000010 00000000 00000000 00000000 00000000 ................
+  0x00000020 00000000 00000000 00000000 00000000 ................
+  0x00000030 00000000 00000000 00000000 00000000 ................
+  0x00000040 00000000 00000000 00000000 00000000 ................
+...
+```
+
 # test
 
 ```
