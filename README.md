@@ -74,9 +74,9 @@ $ readelf -S obfuscated > /dev/null
 readelf: Error: no .dynamic section in the dynamic segment
 ```
 
-## Nullfy symbol names obfuscation
+## Nullify symbol names obfuscation
 
-Erasing symbol names in the target
+Erases symbol names in the target
 
 ```
 $ cattleya -i input --symbol
@@ -95,8 +95,6 @@ Hex dump of section '.strtab':
 
 $ readelf -x29 obfuscated
 
-readelf: Error: no .dynamic section in the dynamic segment
-
 Hex dump of section '':
   0x00000000 00000000 00000000 00000000 00000000 ................
   0x00000010 00000000 00000000 00000000 00000000 ................
@@ -104,6 +102,30 @@ Hex dump of section '':
   0x00000030 00000000 00000000 00000000 00000000 ................
   0x00000040 00000000 00000000 00000000 00000000 ................
 ...
+```
+
+## Nullify comments obfuscation
+
+Erases comments in the target
+
+```
+$ cattleya -i input --comment
+start obfuscating input...
+obfuscation done!
+
+$ readelf -x27 input
+
+Hex dump of section '.comment':
+  0x00000000 4743433a 20285562 756e7475 2031312e GCC: (Ubuntu 11.
+  0x00000010 342e302d 31756275 6e747531 7e32322e 4.0-1ubuntu1~22.
+  0x00000020 30342920 31312e34 2e3000            04) 11.4.0.
+
+$ readelf -x29 obfuscated
+
+Hex dump of section '.comment':
+  0x00000000 00000000 00000000 00000000 00000000 ................
+  0x00000010 00000000 00000000 00000000 00000000 ................
+  0x00000020 00000000 00000000 000000            ...........
 ```
 
 # test
