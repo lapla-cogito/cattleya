@@ -158,6 +158,24 @@ impl Obfuscator {
         usize::MAX
     }
 
+    pub fn get_section_size_by_name(&self, section: &str) -> usize {
+        let searched_idx = self.sec_hdr.find(section).unwrap_or(usize::MAX);
+        if searched_idx == usize::MAX {
+            panic!("section not found");
+        }
+
+        for i in 0..self.sec_hdr_num {
+            let sec_hdr = self.input[(self.sec_table + i * self.sec_hdr_size) as usize
+                ..(self.sec_table + (i + 1) * self.sec_hdr_size) as usize]
+                .to_vec();
+            let string_offset = u32::from_le_bytes(sec_hdr[0..4].try_into().unwrap());
+            if string_offset == searched_idx as u32 {
+                return u64::from_le_bytes(sec_hdr[32..40].try_into().unwrap()) as usize;
+            }
+        }
+        usize::MAX
+    }
+
     pub fn change_class(&mut self) {
         if self.output[4] == 1 {
             self.output[4] = 2;
@@ -183,9 +201,9 @@ impl Obfuscator {
         }
     }
 
-    pub fn nullfy_symbol_name(&mut self) {
-        let strtab_addr = self.get_section_by_name(".strtab");
-        for i in strtab_addr..strtab_addr + (self.sec_hdr_size * self.sec_hdr_num) as usize {
+    pub fn nullify_section(&mut self, section: &str) {
+        let section_addr = self.get_section_by_name(section);
+        for i in section_addr..section_addr + self.get_section_size_by_name(section) {
             self.output[i] = 0;
         }
     }

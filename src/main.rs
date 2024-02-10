@@ -37,6 +37,12 @@ struct Args {
     sechdr: bool,
     #[arg(long, help = "nullify symbols in the ELF", default_value = "false")]
     symbol: bool,
+    #[arg(
+        long,
+        help = "nullify comment section in the ELF",
+        default_value = "false"
+    )]
+    comment: bool,
 }
 
 fn main() -> std::io::Result<()> {
@@ -58,8 +64,12 @@ fn main() -> std::io::Result<()> {
                 obfuscator.null_sec_hdr();
             }
             if args.symbol {
-                obfuscator.nullfy_symbol_name();
+                obfuscator.nullify_section(".strtab");
             }
+            if args.comment {
+                obfuscator.nullify_section(".comment");
+            }
+
             println!("obfuscation done!");
             Ok(())
         }
@@ -117,9 +127,29 @@ mod tests {
     fn null_symbol_name() {
         let loader = Obfuscator::open("bin/test_64bit", "bin/res_symbol");
         let mut obfuscator = loader.unwrap();
-        obfuscator.nullfy_symbol_name();
+        obfuscator.nullify_section(".strtab");
         let output = Command::new("readelf")
             .args(["-x29", "bin/res_symbol"])
+            .output()
+            .expect("failed to execute readelf");
+
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .trim()
+                .split('\n')
+                .collect::<Vec<&str>>()[1],
+            "  0x00000000 00000000 00000000 00000000 00000000 ................"
+        );
+    }
+
+    #[test]
+    fn null_comment() {
+        let loader = Obfuscator::open("bin/test_64bit", "bin/res_comment");
+        let mut obfuscator = loader.unwrap();
+        obfuscator.nullify_section(".comment");
+        let output = Command::new("readelf")
+            .args(["-x27", "bin/res_comment"])
             .output()
             .expect("failed to execute readelf");
 
