@@ -140,7 +140,7 @@ impl Obfuscator {
         self.input[4] == 2
     }
 
-    pub fn get_section_by_name(&self, section: &str) -> usize {
+    pub fn get_section(&self, section: &str) -> (usize, usize) {
         let searched_idx = self.sec_hdr.find(section).unwrap_or(usize::MAX);
         if searched_idx == usize::MAX {
             panic!("section not found");
@@ -152,28 +152,13 @@ impl Obfuscator {
                 .to_vec();
             let string_offset = u32::from_le_bytes(sec_hdr[0..4].try_into().unwrap());
             if string_offset == searched_idx as u32 {
-                return u64::from_le_bytes(sec_hdr[24..32].try_into().unwrap()) as usize;
+                return (
+                    u64::from_le_bytes(sec_hdr[24..32].try_into().unwrap()) as usize,
+                    u64::from_le_bytes(sec_hdr[32..40].try_into().unwrap()) as usize,
+                );
             }
         }
-        usize::MAX
-    }
-
-    pub fn get_section_size_by_name(&self, section: &str) -> usize {
-        let searched_idx = self.sec_hdr.find(section).unwrap_or(usize::MAX);
-        if searched_idx == usize::MAX {
-            panic!("section not found");
-        }
-
-        for i in 0..self.sec_hdr_num {
-            let sec_hdr = self.input[(self.sec_table + i * self.sec_hdr_size) as usize
-                ..(self.sec_table + (i + 1) * self.sec_hdr_size) as usize]
-                .to_vec();
-            let string_offset = u32::from_le_bytes(sec_hdr[0..4].try_into().unwrap());
-            if string_offset == searched_idx as u32 {
-                return u64::from_le_bytes(sec_hdr[32..40].try_into().unwrap()) as usize;
-            }
-        }
-        usize::MAX
+        (usize::MAX, usize::MAX)
     }
 
     pub fn change_class(&mut self) {
@@ -192,7 +177,7 @@ impl Obfuscator {
         }
     }
 
-    pub fn null_sec_hdr(&mut self) {
+    pub fn nullify_sec_hdr(&mut self) {
         for i in 0..self.sec_hdr_num {
             let offset = self.sec_hdr_offset + i * self.sec_hdr_size;
             for j in offset..offset + self.sec_hdr_size {
@@ -202,8 +187,8 @@ impl Obfuscator {
     }
 
     pub fn nullify_section(&mut self, section: &str) {
-        let section_addr = self.get_section_by_name(section);
-        for i in section_addr..section_addr + self.get_section_size_by_name(section) {
+        let (section_addr, section_size) = self.get_section(section);
+        for i in section_addr..section_addr + section_size {
             self.output[i] = 0;
         }
     }

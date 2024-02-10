@@ -61,7 +61,7 @@ fn main() -> std::io::Result<()> {
                 obfuscator.change_endian();
             }
             if args.sechdr {
-                obfuscator.null_sec_hdr();
+                obfuscator.nullify_sec_hdr();
             }
             if args.symbol {
                 obfuscator.nullify_section(".strtab");
@@ -111,7 +111,7 @@ mod tests {
     fn null_sec_hdr() {
         let loader = Obfuscator::open("bin/test_64bit", "bin/res_sechdr");
         let mut obfuscator = loader.unwrap();
-        obfuscator.null_sec_hdr();
+        obfuscator.nullify_sec_hdr();
         let output = Command::new("readelf")
             .args(["-S", "bin/res_sechdr"])
             .output()
