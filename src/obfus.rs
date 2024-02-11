@@ -88,9 +88,9 @@ impl Obfuscator {
             false => u32::from_le_bytes(input[32..36].try_into().unwrap()) as u64,
         };
 
-        let sh_table_header_addr = u16::from_le_bytes(input[62..64].try_into().unwrap()) as usize
-            * sec_hdr_size as usize
-            + sec_table as usize;
+        let sh_table_header_addr = (u16::from_le_bytes(input[62..64].try_into().unwrap()) as u64
+            * sec_hdr_size
+            + sec_table) as usize;
 
         let sh_table_header =
             &input[sh_table_header_addr..sh_table_header_addr + sec_hdr_size as usize];
@@ -124,11 +124,11 @@ impl Obfuscator {
         Ok(Obfuscator {
             input,
             output,
+            sec_hdr,
             sec_hdr_num,
             sec_hdr_size,
             sec_hdr_offset,
             sec_table,
-            sec_hdr,
         })
     }
 
@@ -140,7 +140,7 @@ impl Obfuscator {
         self.input[4] == 2
     }
 
-    pub fn get_section(&self, section: &str) -> (usize, usize) {
+    fn get_section(&self, section: &str) -> (usize, usize) {
         let searched_idx = self.sec_hdr.find(section).unwrap_or(usize::MAX);
         if searched_idx == usize::MAX {
             panic!("section not found");
@@ -158,23 +158,16 @@ impl Obfuscator {
                 );
             }
         }
+
         (usize::MAX, usize::MAX)
     }
 
     pub fn change_class(&mut self) {
-        if self.output[4] == 1 {
-            self.output[4] = 2;
-        } else {
-            self.output[4] = 1;
-        }
+        self.output[4] = 3 - self.output[4];
     }
 
     pub fn change_endian(&mut self) {
-        if self.output[5] == 1 {
-            self.output[5] = 2;
-        } else {
-            self.output[5] = 1;
-        }
+        self.output[5] = 3 - self.output[5];
     }
 
     pub fn nullify_sec_hdr(&mut self) {
@@ -188,6 +181,9 @@ impl Obfuscator {
 
     pub fn nullify_section(&mut self, section: &str) {
         let (section_addr, section_size) = self.get_section(section);
+        if section_addr == usize::MAX {
+            panic!("section not found");
+        }
         for i in section_addr..section_addr + section_size {
             self.output[i] = 0;
         }

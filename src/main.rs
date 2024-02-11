@@ -43,6 +43,8 @@ struct Args {
         default_value = "false"
     )]
     comment: bool,
+    #[arg(long, help = "nullify section in the ELF")]
+    section: String,
 }
 
 fn main() -> std::io::Result<()> {
@@ -68,6 +70,9 @@ fn main() -> std::io::Result<()> {
             }
             if args.comment {
                 obfuscator.nullify_section(".comment");
+            }
+            if !args.section.is_empty() {
+                obfuscator.nullify_section(&args.section);
             }
 
             println!("obfuscation done!");
