@@ -9,15 +9,16 @@ A CLI application to obfuscate a ELF file
 Usage: cattleya [OPTIONS] --input <INPUT>
 
 Options:
-  -i, --input <INPUT>    input file name
-  -o, --output <OUTPUT>  output file name [default: obfuscated]
-  -c, --class            change architecture class in the ELF
-  -e, --endian           change endian in the ELF
-  -s, --sechdr           nullify section header in the ELF
-      --symbol           nullify symbols in the ELF
-      --comment          nullify comment section in the ELF
-  -h, --help             Print help
-  -V, --version          Print version
+  -i, --input <INPUT>      input file name
+  -o, --output <OUTPUT>    output file name [default: obfuscated]
+  -c, --class              change architecture class in the ELF
+  -e, --endian             change endian in the ELF
+  -s, --sechdr             nullify section header in the ELF
+      --symbol             nullify symbols in the ELF
+      --comment            nullify comment section in the ELF
+      --section <SECTION>  nullify section in the ELF
+  -h, --help               Print help
+  -V, --version            Print version
 ```
 
 # Obfuscation methods
