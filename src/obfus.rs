@@ -44,7 +44,7 @@ pub struct Obfuscator {
 
 impl Obfuscator {
     pub fn open(input_path: &str, output_path: &str) -> std::io::Result<Obfuscator> {
-        let file = match OpenOptions::new().read(true).write(true).open(input_path) {
+        let file = match OpenOptions::new().read(true).open(input_path) {
             Ok(file) => file,
             Err(e) => {
                 panic!("failed to open file: {}", e);
