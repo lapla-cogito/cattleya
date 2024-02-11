@@ -14,6 +14,8 @@ Options:
   -c, --class            change architecture class in the ELF
   -e, --endian           change endian in the ELF
   -s, --sechdr           nullify section header in the ELF
+      --symbol           nullify symbols in the ELF
+      --comment          nullify comment section in the ELF
   -h, --help             Print help
   -V, --version          Print version
 ```
