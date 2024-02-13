@@ -43,7 +43,7 @@ struct Args {
         default_value = "false"
     )]
     comment: bool,
-    #[arg(long, help = "nullify section in the ELF")]
+    #[arg(long, help = "nullify section in the ELF", default_value = "")]
     section: String,
 }
 
