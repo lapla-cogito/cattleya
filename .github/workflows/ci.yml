@@ -1,0 +1,26 @@
+name: CI for cattleya
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        types: [opened, synchronize, reopened]
+
+jobs:
+    cargo-test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Setup Rust-toolchain
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                components: clippy
+            - name: Run clippy
+              uses: giraffate/clippy-action@v1
+              with:
+                reporter: 'github-pr-review'
+                github_token: ${{ secrets.GITHUB_TOKEN }}
+            - name: Run tests
+              run: cargo test
