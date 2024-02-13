@@ -72,18 +72,23 @@ impl Obfuscator {
         let input = unsafe { Mmap::map(&file)? };
         let output = unsafe { MmapMut::map_mut(&output_file)? };
 
-        let sec_hdr_offset = (input[E_SHOFF_START_BYTE + 3] as u64) << 24
-            | (input[E_SHOFF_START_BYTE + 2] as u64) << 16
-            | (input[E_SHOFF_START_BYTE + 1] as u64) << 8
-            | (input[E_SHOFF_START_BYTE] as u64);
-        let sec_hdr_num =
-            (input[E_SHNUM_START_BYTE + 1] as u64) << 8 | (input[E_SHNUM_START_BYTE] as u64);
-        let sec_hdr_size = (input[E_SHENTSIZE_START_BYTE + 1] as u64) << 8
-            | (input[E_SHENTSIZE_START_BYTE] as u64);
+        let sec_hdr_offset = u32::from_le_bytes(
+            input[E_SHOFF_START_BYTE..E_SHOFF_START_BYTE + 4]
+                .try_into()
+                .unwrap(),
+        ) as u64;
+        let sec_hdr_num = u16::from_le_bytes(
+            input[E_SHNUM_START_BYTE..E_SHNUM_START_BYTE + 2]
+                .try_into()
+                .unwrap(),
+        ) as u64;
+        let sec_hdr_size = u16::from_le_bytes(
+            input[E_SHENTSIZE_START_BYTE..E_SHENTSIZE_START_BYTE + 2]
+                .try_into()
+                .unwrap(),
+        ) as u64;
 
-        let bit64 = input[4] == 2;
-
-        let sec_table = match bit64 {
+        let sec_table = match input[4] == 2 {
             true => u64::from_le_bytes(input[40..48].try_into().unwrap()),
             false => u32::from_le_bytes(input[32..36].try_into().unwrap()) as u64,
         };
