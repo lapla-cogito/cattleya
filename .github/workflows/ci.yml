@@ -8,7 +8,34 @@ on:
         types: [opened, synchronize, reopened]
 
 jobs:
+    build-cache:
+        runs-on: ubuntu-latest
+    
+        steps:
+          - name: Checkout
+            uses: actions/checkout@v4    
+          - name: Cache cargo
+            uses: ./.github/actions/cache_cargo
+          - name: build
+            run: cargo build
+
+    cargo-fmt:
+        needs: build-cache
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Setup Rust-toolchain
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                components: rustfmt
+            - name: Cache cargo
+              uses: ./.github/actions/cache_cargo
+            - name: Run rustfmt
+              run: cargo fmt --all -- --check
+
     cargo-test:
+        needs: build-cache
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
@@ -17,6 +44,8 @@ jobs:
               uses: dtolnay/rust-toolchain@stable
               with:
                 components: clippy
+            - name: Cache cargo
+              uses: ./.github/actions/cache_cargo
             - name: Run clippy
               uses: giraffate/clippy-action@v1
               with:
