@@ -87,7 +87,7 @@ fn main() -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use crate::obfus::{self, Obfuscator};
-    use memmap::Mmap;
+    use memmap2::Mmap;
     use std::process::Command;
 
     #[test]

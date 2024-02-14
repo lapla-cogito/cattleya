@@ -1,4 +1,4 @@
-use memmap::{Mmap, MmapMut};
+use memmap2::{Mmap, MmapMut};
 use std::{fs::OpenOptions, io::prelude::*, mem};
 
 pub const HEADER_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
