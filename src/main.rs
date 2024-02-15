@@ -100,6 +100,7 @@ mod tests {
     fn change_class_64bit() {
         let loader = Obfuscator::open("bin/test_64bit", "bin/res_64bit");
         let mut obfuscator = loader.unwrap();
+        assert_eq!(obfuscator.output[4], 2);
         obfuscator.change_class();
         assert_eq!(obfuscator.output[4], 1);
     }
@@ -108,6 +109,7 @@ mod tests {
     fn change_endian() {
         let loader = Obfuscator::open("bin/test_64bit", "bin/res_endian");
         let mut obfuscator = loader.unwrap();
+        assert_eq!(obfuscator.output[5], 1);
         obfuscator.change_endian();
         assert_eq!(obfuscator.output[5], 2);
     }
