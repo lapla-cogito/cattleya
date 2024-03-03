@@ -126,19 +126,15 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> std::io::Resu
 
 #[cfg(test)]
 mod tests {
-    use crate::obfus::{self, Obfuscator};
-    use memmap2::Mmap;
-    use std::process::Command;
-
     #[test]
     fn not_elf() {
         let file = std::fs::File::open("src/main.rs").unwrap();
-        assert!(unsafe { Mmap::map(&file).unwrap()[0..4] != obfus::HEADER_MAGIC });
+        assert!(unsafe { memmap2::Mmap::map(&file).unwrap()[0..4] != crate::obfus::HEADER_MAGIC });
     }
 
     #[test]
     fn change_class_64bit() {
-        let loader = Obfuscator::open("bin/test_64bit", "bin/res_64bit");
+        let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_64bit");
         let mut obfuscator = loader.unwrap();
         assert_eq!(obfuscator.output[4], 2);
         obfuscator.change_class();
@@ -147,7 +143,7 @@ mod tests {
 
     #[test]
     fn change_endian() {
-        let loader = Obfuscator::open("bin/test_64bit", "bin/res_endian");
+        let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_endian");
         let mut obfuscator = loader.unwrap();
         assert_eq!(obfuscator.output[5], 1);
         obfuscator.change_endian();
@@ -156,10 +152,10 @@ mod tests {
 
     #[test]
     fn null_sec_hdr() {
-        let loader = Obfuscator::open("bin/test_64bit", "bin/res_sechdr");
+        let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_sechdr");
         let mut obfuscator = loader.unwrap();
         obfuscator.nullify_sec_hdr();
-        let output = Command::new("readelf")
+        let output = std::process::Command::new("readelf")
             .args(["-S", "bin/res_sechdr"])
             .output()
             .expect("failed to execute readelf");
@@ -172,10 +168,10 @@ mod tests {
 
     #[test]
     fn null_symbol_name() {
-        let loader = Obfuscator::open("bin/test_64bit", "bin/res_symbol");
+        let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_symbol");
         let mut obfuscator = loader.unwrap();
         obfuscator.nullify_section(".strtab");
-        let output = Command::new("readelf")
+        let output = std::process::Command::new("readelf")
             .args(["-x29", "bin/res_symbol"])
             .output()
             .expect("failed to execute readelf");
@@ -192,10 +188,10 @@ mod tests {
 
     #[test]
     fn null_comment() {
-        let loader = Obfuscator::open("bin/test_64bit", "bin/res_comment");
+        let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_comment");
         let mut obfuscator = loader.unwrap();
         obfuscator.nullify_section(".comment");
-        let output = Command::new("readelf")
+        let output = std::process::Command::new("readelf")
             .args(["-x27", "bin/res_comment"])
             .output()
             .expect("failed to execute readelf");
@@ -208,5 +204,34 @@ mod tests {
                 .collect::<Vec<&str>>()[1],
             "  0x00000000 00000000 00000000 00000000 00000000 ................"
         );
+    }
+
+    #[test]
+    fn recursive_option() {
+        std::process::Command::new("cargo")
+            .args(["run", "--", "-r", "bin/recursive", "--symbol"])
+            .output()
+            .expect("failed to execute cargo");
+
+        let entries = crate::util::RecursiveDir::new("obfuscated_dir/bin/recursive")
+            .unwrap()
+            .filter_map(|e| Some(e.ok()?.path()))
+            .collect::<Vec<_>>();
+
+        for entry in entries.iter() {
+            let output = std::process::Command::new("readelf")
+                .args(["-x29", entry.to_str().unwrap()])
+                .output()
+                .expect("failed to execute readelf");
+
+            assert_eq!(
+                String::from_utf8(output.stdout)
+                    .unwrap()
+                    .trim()
+                    .split('\n')
+                    .collect::<Vec<&str>>()[1],
+                "  0x00000000 00000000 00000000 00000000 00000000 ................"
+            );
+        }
     }
 }

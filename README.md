@@ -4,9 +4,9 @@ An ELF obfuscator written in Rust
 # How to use
 ```
 $ cattleya -h
-A CLI application to obfuscate a ELF file
+A CLI application to obfuscate ELF file(s)
 
-Usage: cattleya [OPTIONS] --input <INPUT>
+Usage: cattleya [OPTIONS]
 
 Options:
   -i, --input <INPUT>          input file name [default: ]
@@ -21,6 +21,8 @@ Options:
   -h, --help                   Print help
   -V, --version                Print version
 ```
+
+Both input and recursive options cannot be empty.
 
 # Obfuscation methods
 
