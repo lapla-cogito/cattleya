@@ -1,5 +1,5 @@
 # cattleya
-A ELF obfuscator written in Rust
+An ELF obfuscator written in Rust
 
 # How to use
 ```
@@ -9,16 +9,17 @@ A CLI application to obfuscate a ELF file
 Usage: cattleya [OPTIONS] --input <INPUT>
 
 Options:
-  -i, --input <INPUT>      input file name
-  -o, --output <OUTPUT>    output file name [default: obfuscated]
-  -c, --class              change architecture class in the ELF
-  -e, --endian             change endian in the ELF
-  -s, --sechdr             nullify section header in the ELF
-      --symbol             nullify symbols in the ELF
-      --comment            nullify comment section in the ELF
-      --section <SECTION>  nullify section in the ELF
-  -h, --help               Print help
-  -V, --version            Print version
+  -i, --input <INPUT>          input file name [default: ]
+  -o, --output <OUTPUT>        output file name [default: ]
+  -c, --class                  change architecture class in the ELF
+  -e, --endian                 change endian in the ELF
+  -s, --sechdr                 nullify section header in the ELF
+      --symbol                 nullify symbols in the ELF
+      --comment                nullify comment section in the ELF
+      --section <SECTION>      nullify section in the ELF [default: ]
+  -r, --recursive <RECURSIVE>  recursive [default: ]
+  -h, --help                   Print help
+  -V, --version                Print version
 ```
 
 # Obfuscation methods
@@ -129,6 +130,30 @@ Hex dump of section '.comment':
   0x00000000 00000000 00000000 00000000 00000000 ................
   0x00000010 00000000 00000000 00000000 00000000 ................
   0x00000020 00000000 00000000 000000            ...........
+```
+
+# Recursive option
+
+By specifying the directory name in the recursive option, the same obfuscation can be applied to all ELF files in that directory:
+
+```
+$ tree recursive_sample
+recursive_sample
+├── bar
+└── foo
+
+0 directories, 2 file
+
+$ cattleya -r recursive_sample --symbol
+...
+$ tree obfuscated_dir
+tree obfuscated_dir
+obfuscated_dir
+└── recursive_sample
+    ├── bar
+    └── foo
+
+1 directory, 2 files
 ```
 
 # test

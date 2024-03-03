@@ -1,15 +1,16 @@
 mod obfus;
+mod util;
 
 #[derive(clap::Parser, Debug)]
 #[command(
     author = "lapla",
-    about = "A CLI application to obfuscate a ELF file",
+    about = "A CLI application to obfuscate ELF file(s)",
     version = "v0.1.0"
 )]
 struct Args {
-    #[arg(short, long, help = "input file name")]
+    #[arg(short, long, help = "input file name", default_value = "")]
     input: String,
-    #[arg(short, long, help = "output file name", default_value = "obfuscated")]
+    #[arg(short, long, help = "output file name", default_value = "")]
     output: String,
     #[arg(
         short,
@@ -42,17 +43,58 @@ struct Args {
     comment: bool,
     #[arg(long, help = "nullify section in the ELF", default_value = "")]
     section: String,
+    #[arg(short, long, help = "recursive", default_value = "")]
+    recursive: String,
 }
 
-fn main() -> std::io::Result<()> {
-    use clap::Parser;
+fn main() {
+    use clap::Parser as _;
     let args = Args::parse();
-    let loader = obfus::Obfuscator::open(&args.input, &args.output);
+
+    if args.recursive.is_empty() {
+        if args.input.is_empty() {
+            panic!("input file name is required");
+        }
+
+        let output_path = if !args.output.is_empty() {
+            &args.output
+        } else {
+            "obfuscated"
+        };
+
+        exec_obfus(&args.input, output_path, &args).unwrap_or(());
+    } else {
+        if !args.input.is_empty() {
+            panic!("both input file name and recursive option are not allowed");
+        }
+        if !args.output.is_empty() {
+            println!("output file name will be ignored");
+        }
+
+        let entries = util::RecursiveDir::new(&args.recursive)
+            .unwrap()
+            .filter_map(|e| Some(e.ok()?.path()))
+            .collect::<Vec<_>>();
+
+        for entry in entries.iter() {
+            let output_path = format!("obfuscated_dir/{}", entry.to_str().unwrap());
+            let dir = output_path.rsplitn(2, '/').collect::<Vec<&str>>()[1];
+
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::File::create(&output_path).unwrap();
+
+            exec_obfus(entry.to_str().unwrap(), &output_path, &args).unwrap_or(());
+        }
+    }
+}
+
+fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> std::io::Result<()> {
+    let loader = obfus::Obfuscator::open(input_path, output_path);
     let mut obfuscator = loader.unwrap();
 
     match obfuscator.is_elf() && obfuscator.is_64bit() {
         true => {
-            println!("start obfuscating {}...", args.input);
+            println!("start obfuscating {}...", input_path);
 
             if args.class {
                 obfuscator.change_class();
