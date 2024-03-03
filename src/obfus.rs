@@ -1,12 +1,11 @@
-use memmap2::{Mmap, MmapMut};
-use std::{fs::OpenOptions, io::prelude::*, mem};
+use std::io::prelude::*;
 
 pub const HEADER_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
 
-const ELF64_ADDR_SIZE: usize = mem::size_of::<u64>();
-const ELF64_OFF_SIZE: usize = mem::size_of::<u64>();
-const ELF64_WORD_SIZE: usize = mem::size_of::<u32>();
-const ELF64_HALF_SIZE: usize = mem::size_of::<u16>();
+const ELF64_ADDR_SIZE: usize = std::mem::size_of::<u64>();
+const ELF64_OFF_SIZE: usize = std::mem::size_of::<u64>();
+const ELF64_WORD_SIZE: usize = std::mem::size_of::<u32>();
+const ELF64_HALF_SIZE: usize = std::mem::size_of::<u16>();
 
 const E_TYPE_START_BYTE: usize = 16;
 const E_TYPE_SIZE_BYTE: usize = ELF64_HALF_SIZE;
@@ -33,8 +32,8 @@ const E_SHENTSIZE_SIZE_BYTE: usize = ELF64_HALF_SIZE;
 const E_SHNUM_START_BYTE: usize = E_SHENTSIZE_START_BYTE + E_SHENTSIZE_SIZE_BYTE;
 
 pub struct Obfuscator {
-    input: Mmap,
-    pub output: MmapMut,
+    input: memmap2::Mmap,
+    pub output: memmap2::MmapMut,
     sec_hdr: String,
     sec_hdr_num: u64,
     sec_hdr_size: u64,
@@ -44,14 +43,14 @@ pub struct Obfuscator {
 
 impl Obfuscator {
     pub fn open(input_path: &str, output_path: &str) -> std::io::Result<Obfuscator> {
-        let file = match OpenOptions::new().read(true).open(input_path) {
+        let file = match std::fs::OpenOptions::new().read(true).open(input_path) {
             Ok(file) => file,
             Err(e) => {
                 panic!("failed to open file: {}", e);
             }
         };
 
-        let mut output_file = match OpenOptions::new()
+        let mut output_file = match std::fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -69,8 +68,8 @@ impl Obfuscator {
             .read_to_end(&mut input_contents)?;
         output_file.write_all(&input_contents)?;
 
-        let input = unsafe { Mmap::map(&file)? };
-        let output = unsafe { MmapMut::map_mut(&output_file)? };
+        let input = unsafe { memmap2::Mmap::map(&file)? };
+        let output = unsafe { memmap2::MmapMut::map_mut(&output_file)? };
 
         let sec_hdr_offset = u32::from_le_bytes(
             input[E_SHOFF_START_BYTE..E_SHOFF_START_BYTE + 4]

@@ -1,9 +1,6 @@
-use clap::Parser;
-use obfus::Obfuscator;
-
 mod obfus;
 
-#[derive(Parser, Debug)]
+#[derive(clap::Parser, Debug)]
 #[command(
     author = "lapla",
     about = "A CLI application to obfuscate a ELF file",
@@ -48,8 +45,9 @@ struct Args {
 }
 
 fn main() -> std::io::Result<()> {
+    use clap::Parser;
     let args = Args::parse();
-    let loader = Obfuscator::open(&args.input, &args.output);
+    let loader = obfus::Obfuscator::open(&args.input, &args.output);
     let mut obfuscator = loader.unwrap();
 
     match obfuscator.is_elf() && obfuscator.is_64bit() {
