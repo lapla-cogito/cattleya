@@ -45,6 +45,8 @@ struct Args {
     section: String,
     #[arg(short, long, help = "recursive", default_value = "")]
     recursive: String,
+    #[arg(short, long, help = "pack the ELF", default_value = "false")]
+    pack: bool,
 }
 
 fn main() {
@@ -97,22 +99,39 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> std::io::Resu
             println!("start obfuscating {}...", input_path);
 
             if args.class {
+                println!("changing class...");
                 obfuscator.change_class();
+                println!("class changed!");
             }
             if args.endian {
+                println!("changing endian...");
                 obfuscator.change_endian();
+                println!("endian changed!");
             }
             if args.sechdr {
+                println!("nullifying section header...");
                 obfuscator.nullify_sec_hdr();
+                println!("section header nullified!");
             }
             if args.symbol {
+                println!("nullifying symbols...");
                 obfuscator.nullify_section(".strtab");
+                println!("symbols nullified!");
             }
             if args.comment {
+                println!("nullifying comment section...");
                 obfuscator.nullify_section(".comment");
+                println!("comment section nullified!");
             }
             if !args.section.is_empty() {
+                println!("nullifying section...");
                 obfuscator.nullify_section(&args.section);
+                println!("section nullified!");
+            }
+            if args.pack {
+                println!("packing...");
+                obfuscator.pack();
+                println!("packed!");
             }
 
             println!("obfuscation done!");

@@ -192,4 +192,66 @@ impl Obfuscator {
             self.output[i] = 0;
         }
     }
+
+    fn xor(&mut self, start: u8, end: u8, key: u8) {
+        for i in start..end {
+            self.output[i as usize] ^= key;
+        }
+    }
+
+    pub fn pack(&mut self) {
+        use sha2::Digest as _;
+
+        const KEY: u8 = 0xff;
+
+        let (section_addr, section_size) = self.get_section(".text");
+        if section_addr == usize::MAX {
+            panic!("section not found");
+        }
+        self.xor(section_addr as u8, (section_addr + section_size) as u8, KEY);
+
+        let mut stub = [
+            0x60, // pushad
+            0xbe, 0xff, 0xff, 0xff, 0xff, // mov esi, decode_start
+            0xb9, 0xff, 0xff, 0xff, 0xff, // mov ecx, decode_size
+            0xb0, 0xff, // mov al, decoder
+            0x30, 0x06, // xor byte ptr [esi], al (LOOP)
+            0x46, // inc esi
+            0x49, // dec ecx
+            0x75, 0xfa, // jnz LOOP
+            0x61, // popad
+            0xe9, 0xff, 0xff, 0xff, 0xff, // jmp OEP
+        ];
+
+        stub[2..6].copy_from_slice(&(section_addr as u32).to_le_bytes());
+        stub[7..11].copy_from_slice(&(section_size as u32).to_le_bytes());
+        stub[13] = KEY;
+        stub[21..25].copy_from_slice(&(section_addr as u32).to_le_bytes());
+
+        let mut packed_binary = Vec::new();
+        packed_binary.extend_from_slice(&self.input[..section_addr + section_size]);
+        let stub_addr = packed_binary.len();
+        packed_binary.extend_from_slice(&stub);
+        packed_binary.extend_from_slice(&self.input[section_addr + section_size..]);
+        packed_binary[24..28].copy_from_slice((stub_addr as u32).to_le_bytes().as_ref());
+
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(&packed_binary);
+        let hashed_str = hasher
+            .finalize()
+            .iter()
+            .fold(String::new(), |s, b| s + &format!("{:02x}", b));
+
+        std::fs::create_dir_all("/tmp/cattleya").unwrap();
+        let mut output_file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(format!("/tmp/cattleya/{}", hashed_str))
+            .unwrap();
+
+        output_file.write_all(&packed_binary).unwrap();
+        self.output = unsafe { memmap2::MmapMut::map_mut(&output_file).unwrap() };
+        std::fs::remove_dir_all("/tmp/cattleya").unwrap();
+    }
 }
