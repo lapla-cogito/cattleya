@@ -2,34 +2,24 @@ use std::io::prelude::*;
 
 pub const HEADER_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
 
-const ELF64_ADDR_SIZE: usize = std::mem::size_of::<u64>();
-const ELF64_OFF_SIZE: usize = std::mem::size_of::<u64>();
-const ELF64_WORD_SIZE: usize = std::mem::size_of::<u32>();
-const ELF64_HALF_SIZE: usize = std::mem::size_of::<u16>();
-
-const E_TYPE_START_BYTE: usize = 16;
-const E_TYPE_SIZE_BYTE: usize = ELF64_HALF_SIZE;
-const E_MACHINE_START_BYTE: usize = E_TYPE_START_BYTE + E_TYPE_SIZE_BYTE;
-const E_MACHINE_SIZE_BYTE: usize = ELF64_HALF_SIZE;
-const E_VERSION_START_BYTE: usize = E_MACHINE_START_BYTE + E_MACHINE_SIZE_BYTE;
-const E_VERSION_SIZE_BYTE: usize = ELF64_WORD_SIZE;
-const E_ENTRY_START_BYTE: usize = E_VERSION_START_BYTE + E_VERSION_SIZE_BYTE;
-const E_ENTRY_SIZE_BYTE: usize = ELF64_ADDR_SIZE;
-const E_PHOFF_START_BYTE: usize = E_ENTRY_START_BYTE + E_ENTRY_SIZE_BYTE;
-const E_PHOFF_SIZE_BYTE: usize = ELF64_OFF_SIZE;
-const E_SHOFF_START_BYTE: usize = E_PHOFF_START_BYTE + E_PHOFF_SIZE_BYTE;
-const E_SHOFF_SIZE_BYTE: usize = ELF64_OFF_SIZE;
-const E_FLAGS_START_BYTE: usize = E_SHOFF_START_BYTE + E_SHOFF_SIZE_BYTE;
-const E_FLAGS_SIZE_BYTE: usize = ELF64_WORD_SIZE;
-const E_EHSIZE_START_BYTE: usize = E_FLAGS_START_BYTE + E_FLAGS_SIZE_BYTE;
-const E_EHSIZE_SIZE_BYTE: usize = ELF64_HALF_SIZE;
-const E_PHENTSIZE_START_BYTE: usize = E_EHSIZE_START_BYTE + E_EHSIZE_SIZE_BYTE;
-const E_PHENTSIZE_SIZE_BYTE: usize = ELF64_HALF_SIZE;
-const E_PHNUM_START_BYTE: usize = E_PHENTSIZE_START_BYTE + E_PHENTSIZE_SIZE_BYTE;
-const E_PHNUM_SIZE_BYTE: usize = ELF64_HALF_SIZE;
-const E_SHENTSIZE_START_BYTE: usize = E_PHNUM_START_BYTE + E_PHNUM_SIZE_BYTE;
-const E_SHENTSIZE_SIZE_BYTE: usize = ELF64_HALF_SIZE;
-const E_SHNUM_START_BYTE: usize = E_SHENTSIZE_START_BYTE + E_SHENTSIZE_SIZE_BYTE;
+#[repr(C, packed)]
+#[derive(Debug)]
+pub struct ElfHeader {
+    e_ident: [u8; 16],
+    e_type: u16,
+    e_machine: u16,
+    e_version: u32,
+    e_entry: u64,
+    e_phoff: u64,
+    e_shoff: u64,
+    e_flags: u32,
+    e_ehsize: u16,
+    e_phentsize: u16,
+    e_phnum: u16,
+    e_shentsize: u16,
+    e_shnum: u16,
+    e_shstrndx: u16,
+}
 
 pub struct Obfuscator {
     input: memmap2::Mmap,
@@ -54,6 +44,7 @@ impl Obfuscator {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(true)
             .open(output_path)
         {
             Ok(file) => file,
@@ -71,21 +62,11 @@ impl Obfuscator {
         let input = unsafe { memmap2::Mmap::map(&file)? };
         let output = unsafe { memmap2::MmapMut::map_mut(&output_file)? };
 
-        let sec_hdr_offset = u32::from_le_bytes(
-            input[E_SHOFF_START_BYTE..E_SHOFF_START_BYTE + 4]
-                .try_into()
-                .unwrap(),
-        ) as u64;
-        let sec_hdr_num = u16::from_le_bytes(
-            input[E_SHNUM_START_BYTE..E_SHNUM_START_BYTE + 2]
-                .try_into()
-                .unwrap(),
-        ) as u64;
-        let sec_hdr_size = u16::from_le_bytes(
-            input[E_SHENTSIZE_START_BYTE..E_SHENTSIZE_START_BYTE + 2]
-                .try_into()
-                .unwrap(),
-        ) as u64;
+        let elf_hdr: ElfHeader = unsafe { std::ptr::read(input.as_ptr() as *const ElfHeader) };
+
+        let sec_hdr_offset = elf_hdr.e_shoff as u64;
+        let sec_hdr_num = elf_hdr.e_shnum as u64;
+        let sec_hdr_size = elf_hdr.e_shentsize as u64;
 
         let sec_table = match input[4] == 2 {
             true => u64::from_le_bytes(input[40..48].try_into().unwrap()),
@@ -188,6 +169,7 @@ impl Obfuscator {
         if section_addr == usize::MAX {
             panic!("section not found");
         }
+
         for i in section_addr..section_addr + section_size {
             self.output[i] = 0;
         }
