@@ -125,6 +125,14 @@ impl Obfuscator {
         self.input[4] == 2
     }
 
+    fn is_enable_pie(&self) -> bool {
+        self.input[16] == 2
+    }
+
+    fn is_stripped(&self) -> bool {
+        self.get_section(".symtab").0 == 0
+    }
+
     fn get_section(&self, section: &str) -> (usize, usize) {
         let searched_idx = self.sec_hdr.find(section).unwrap_or(usize::MAX);
         if searched_idx == usize::MAX {
@@ -172,6 +180,15 @@ impl Obfuscator {
 
         for i in section_addr..section_addr + section_size {
             self.output[i] = 0;
+        }
+    }
+
+    pub fn got_overwrite(&self, function: &str, new_func_addr: &str) {
+        if self.is_enable_pie() {
+            println!("replacing GOT get will no effect with PIE enabled")
+        }
+        if self.is_stripped() {
+            println!("cannot overwrite GOT with stripped binary")
         }
     }
 }
