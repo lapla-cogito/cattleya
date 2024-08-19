@@ -92,7 +92,7 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> std::io::Resu
     let loader = obfus::Obfuscator::open(input_path, output_path);
     let mut obfuscator = loader.unwrap();
 
-    match obfuscator.is_elf() && obfuscator.is_64bit() {
+    match obfuscator.is_elf() {
         true => {
             println!("start obfuscating {}...", input_path);
 

@@ -133,7 +133,8 @@ impl Obfuscator {
         self.get_section(".symtab").0 == 0
     }
 
-    fn get_section(&self, section: &str) -> (usize, usize) {
+    // (section_addr, section_size, entry_size, vaddr)
+    fn get_section(&self, section: &str) -> (usize, usize, usize, usize) {
         let searched_idx = self.sec_hdr.find(section).unwrap_or(usize::MAX);
         if searched_idx == usize::MAX {
             panic!("section not found");
@@ -145,14 +146,26 @@ impl Obfuscator {
                 .to_vec();
             let string_offset = u32::from_le_bytes(sec_hdr[0..4].try_into().unwrap());
             if string_offset == searched_idx as u32 {
-                return (
-                    u64::from_le_bytes(sec_hdr[24..32].try_into().unwrap()) as usize,
-                    u64::from_le_bytes(sec_hdr[32..40].try_into().unwrap()) as usize,
-                );
+                if self.is_64bit() {
+                    return (
+                        u64::from_le_bytes(sec_hdr[24..32].try_into().unwrap()) as usize,
+                        u64::from_le_bytes(sec_hdr[32..40].try_into().unwrap()) as usize,
+                        u64::from_le_bytes(sec_hdr[56..64].try_into().unwrap()) as usize,
+                        u64::from_le_bytes(sec_hdr[16..24].try_into().unwrap()) as usize,
+                    );
+                } else {
+                    return (
+                        u32::from_le_bytes(sec_hdr[16..20].try_into().unwrap()) as usize,
+                        u32::from_le_bytes(sec_hdr[20..24].try_into().unwrap()) as usize,
+                        u32::from_le_bytes(sec_hdr[36..40].try_into().unwrap()) as usize,
+                        u32::from_le_bytes(sec_hdr[12..16].try_into().unwrap()) as usize,
+                    );
+                }
             }
         }
 
-        (usize::MAX, usize::MAX)
+        // section not found
+        (usize::MAX, usize::MAX, usize::MAX, usize::MAX)
     }
 
     pub fn change_class(&mut self) {
@@ -173,7 +186,7 @@ impl Obfuscator {
     }
 
     pub fn nullify_section(&mut self, section: &str) {
-        let (section_addr, section_size) = self.get_section(section);
+        let (section_addr, section_size, _, _) = self.get_section(section);
         if section_addr == usize::MAX {
             panic!("section not found");
         }
@@ -186,9 +199,20 @@ impl Obfuscator {
     pub fn got_overwrite(&self, function: &str, new_func_addr: &str) {
         if self.is_enable_pie() {
             println!("replacing GOT get will no effect with PIE enabled")
-        }
-        if self.is_stripped() {
+        } else if self.is_stripped() {
             println!("cannot overwrite GOT with stripped binary")
+        }
+
+        // let mut addr;
+
+        if self.is_64bit() {
+            let (section_addr, section_size, entry_size, vaddr) = self.get_section(".rela.plt");
+            for i in 0..section_size / entry_size {
+                let entry = &self.input[section_addr..section_addr + section_size]
+                    [i * entry_size..(i + 1) * entry_size];
+            }
+        } else {
+            let (section_addr, section_size, entry_size, vaddr) = self.get_section(".rel.plt");
         }
     }
 }
