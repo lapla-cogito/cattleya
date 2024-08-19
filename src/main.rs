@@ -1,3 +1,4 @@
+mod error;
 mod obfus;
 mod util;
 
@@ -47,13 +48,15 @@ struct Args {
     recursive: String,
 }
 
-fn main() {
+fn main() -> crate::error::Result<()> {
     use clap::Parser as _;
     let args = Args::parse();
 
     if args.recursive.is_empty() {
         if args.input.is_empty() {
-            panic!("input file name is required");
+            return Err(crate::error::Error::InvalidOption(
+                "input file name is required",
+            ));
         }
 
         let output_path = if !args.output.is_empty() {
@@ -62,13 +65,15 @@ fn main() {
             "obfuscated"
         };
 
-        exec_obfus(&args.input, output_path, &args).unwrap_or(());
+        exec_obfus(&args.input, output_path, &args).unwrap_or(())
     } else {
         if !args.input.is_empty() {
-            panic!("both input file name and recursive option are not allowed");
+            return Err(crate::error::Error::InvalidOption(
+                "both input file name and recursive option are not allowed",
+            ));
         }
         if !args.output.is_empty() {
-            println!("output file name will be ignored");
+            eprintln!("output file name will be ignored");
         }
 
         let entries = util::RecursiveDir::new(&args.recursive)
@@ -86,9 +91,11 @@ fn main() {
             exec_obfus(entry.to_str().unwrap(), &output_path, &args).unwrap_or(());
         }
     }
+
+    Ok(())
 }
 
-fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> std::io::Result<()> {
+fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error::Result<()> {
     let loader = obfus::Obfuscator::open(input_path, output_path);
     let mut obfuscator = loader.unwrap();
 
@@ -119,7 +126,7 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> std::io::Resu
             Ok(())
         }
         false => {
-            panic!("not a valid ELF file: {}", args.input);
+            return Err(crate::error::Error::InvalidMagic);
         }
     }
 }
