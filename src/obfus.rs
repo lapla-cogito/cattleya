@@ -1,4 +1,5 @@
-use std::io::prelude::*;
+use std::io::Read as _;
+use std::io::Write as _;
 
 pub const HEADER_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
 
@@ -224,7 +225,7 @@ impl Obfuscator {
         Ok(())
     }
 
-    fn get_dyn_func_id(&self, function: &str) -> crate::error::Result<u64> {
+    fn get_dyn_func_idx(&self, function: &str) -> crate::error::Result<u64> {
         let idx = self.dyn_strings.find(function).unwrap();
         let (section_addr, section_size, entry_size, _) = self.get_section(".dynsym").unwrap();
 
@@ -280,7 +281,7 @@ impl Obfuscator {
             ));
         }
 
-        let dyn_func = self.get_dyn_func_id(target_function_name)?;
+        let dyn_func = self.get_dyn_func_idx(target_function_name)?;
 
         if self.is_64bit() {
             let (section_addr, section_size, entry_size, _) =
