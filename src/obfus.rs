@@ -29,6 +29,8 @@ pub struct Obfuscator {
     sec_hdr_size: u64,
     sec_hdr_offset: u64,
     sec_table: u64,
+    dyn_strings: String,
+    string_table: String,
 }
 
 impl Obfuscator {
@@ -111,7 +113,7 @@ impl Obfuscator {
 
         let sec_hdr = String::from_utf8_lossy(&data_copy).to_string();
 
-        Ok(Obfuscator {
+        let mut obfus = Obfuscator {
             input,
             output,
             sec_hdr,
@@ -119,7 +121,21 @@ impl Obfuscator {
             sec_hdr_size,
             sec_hdr_offset,
             sec_table,
-        })
+            dyn_strings: String::new(),
+            string_table: String::new(),
+        };
+
+        let (section_addr, section_size, _, _) = obfus.get_section(".dynstr").unwrap();
+        obfus.dyn_strings =
+            String::from_utf8_lossy(&obfus.input[section_addr..section_addr + section_size])
+                .to_string();
+
+        let (section_addr, section_size, _, _) = obfus.get_section(".strtab").unwrap();
+        obfus.string_table =
+            String::from_utf8_lossy(&obfus.input[section_addr..section_addr + section_size])
+                .to_string();
+
+        Ok(obfus)
     }
 
     pub fn is_elf(&self) -> bool {
@@ -131,11 +147,17 @@ impl Obfuscator {
     }
 
     fn is_enable_pie(&self) -> bool {
-        self.input[16] == 2
+        self.input[16] != 2
     }
 
     fn is_stripped(&self) -> bool {
         self.get_section(".symtab").unwrap().0 == 0
+    }
+
+    fn v2p(&self, virtual_addr: usize, section: &str) -> usize {
+        let (section_addr, _, _, vaddr) = self.get_section(section).unwrap();
+
+        section_addr + virtual_addr - vaddr
     }
 
     // (section_addr, section_size, entry_size, vaddr)
@@ -203,23 +225,95 @@ impl Obfuscator {
         Ok(())
     }
 
-    pub fn got_overwrite(&self, function: &str, new_func_addr: &str) {
-        if self.is_enable_pie() {
-            println!("replacing GOT get will no effect with PIE enabled")
-        } else if self.is_stripped() {
-            println!("cannot overwrite GOT with stripped binary")
+    fn get_dyn_func_id(&self, function: &str) -> u64 {
+        let idx = self.dyn_strings.find(function).unwrap();
+        let (section_addr, section_size, entry_size, _) = self.get_section(".dynsym").unwrap();
+
+        let dynsym_section = &self.input[section_addr..section_addr + section_size];
+
+        for i in 0..section_size / entry_size {
+            let entry = &dynsym_section[i * entry_size..(i + 1) * entry_size];
+            let name_offset = u32::from_le_bytes(entry[0..4].try_into().unwrap());
+            if name_offset == idx as u32 {
+                return i as u64;
+            }
         }
 
+        0
+    }
+
+    fn get_func_addr_by_name(&self, function: &str) -> crate::error::Result<u64> {
+        let idx = self.string_table.find(function).unwrap();
+        let (section_addr, section_size, entry_size, _) = self.get_section(".symtab").unwrap();
+
+        let dynsym_section = &self.input[section_addr..section_addr + section_size];
+
+        for i in 0..section_size / entry_size {
+            let entry = &dynsym_section[i * entry_size..(i + 1) * entry_size];
+            if self.is_64bit() {
+                if u32::from_le_bytes(entry[0..4].try_into().unwrap()) == idx as u32 {
+                    return Ok(u64::from_le_bytes(entry[8..16].try_into().unwrap()));
+                }
+            } else if u32::from_le_bytes(entry[0..4].try_into().unwrap()) == idx as u32 {
+                return Ok(u32::from_le_bytes(entry[4..8].try_into().unwrap()) as u64);
+            }
+        }
+
+        Err(crate::error::Error::NotFound(
+            "function not found".to_owned() + function,
+        ))
+    }
+
+    pub fn got_overwrite(
+        &mut self,
+        function: &str,
+        new_func_addr: &str,
+    ) -> crate::error::Result<()> {
+        if self.is_enable_pie() {
+            return Err(crate::error::Error::InvalidOption(
+                "replacing GOT get will no effect with PIE enabled",
+            ));
+        } else if self.is_stripped() {
+            return Err(crate::error::Error::InvalidOption(
+                "cannot overwrite GOT with stripped binary",
+            ));
+        }
+
+        let id = self.get_dyn_func_id(function);
+
         if self.is_64bit() {
-            let (section_addr, section_size, entry_size, vaddr) =
+            let (section_addr, section_size, entry_size, _) =
                 self.get_section(".rela.plt").unwrap();
             for i in 0..section_size / entry_size {
                 let entry = &self.input[section_addr..section_addr + section_size]
                     [i * entry_size..(i + 1) * entry_size];
+                let info = u64::from_le_bytes(entry[8..16].try_into().unwrap()) >> 32;
+                if info == id {
+                    let offset = u64::from_le_bytes(entry[0..8].try_into().unwrap());
+                    let addr = self.v2p(offset as usize, ".got.plt");
+                    let new_func_addr = self.get_func_addr_by_name(new_func_addr);
+                    self.output[addr..addr + 8]
+                        .copy_from_slice(&new_func_addr.unwrap().to_le_bytes());
+                    return Ok(());
+                }
             }
         } else {
-            let (section_addr, section_size, entry_size, vaddr) =
-                self.get_section(".rel.plt").unwrap();
+            let (section_addr, section_size, entry_size, _) = self.get_section(".rel.plt").unwrap();
+            for i in 0..section_size / entry_size {
+                let entry = &self.input[section_addr..section_addr + section_size]
+                    [i * entry_size..(i + 1) * entry_size];
+                let info = (u32::from_le_bytes(entry[8..16].try_into().unwrap()) >> 8) as u64;
+                if info == id {
+                    let offset = u32::from_le_bytes(entry[0..4].try_into().unwrap());
+                    let addr = self.v2p(offset as usize, ".got.plt");
+                    let new_func_addr = self.get_func_addr_by_name(new_func_addr);
+                    self.output[addr..addr + 4]
+                        .copy_from_slice(&new_func_addr.unwrap().to_le_bytes());
+                    return Ok(());
+                }
+            }
         }
+
+        Err(crate::error::Error::Obfuscation("failed to overwrite GOT"))
     }
 }

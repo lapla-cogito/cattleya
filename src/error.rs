@@ -18,8 +18,11 @@ pub enum Error {
     #[error("failed in I/O operation: {0}")]
     Io(std::io::Error),
 
-    #[error("")]
-    ExitWithCode(std::process::ExitCode),
+    #[error("failed to process obfuscation: {0}")]
+    Obfuscation(&'static str),
+
+    #[error("not found: {0}")]
+    NotFound(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
