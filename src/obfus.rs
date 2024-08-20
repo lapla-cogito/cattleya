@@ -280,21 +280,23 @@ impl Obfuscator {
             ));
         }
 
-        let id = self.get_dyn_func_id(target_function_name)?;
+        let dyn_func = self.get_dyn_func_id(target_function_name)?;
 
         if self.is_64bit() {
             let (section_addr, section_size, entry_size, _) =
                 self.get_section(".rela.plt").unwrap();
+
             for i in 0..section_size / entry_size {
                 let entry = &self.input[section_addr..section_addr + section_size]
                     [i * entry_size..(i + 1) * entry_size];
-                let info = u64::from_le_bytes(entry[8..16].try_into().unwrap()) >> 32;
-                if info == id {
+
+                if u64::from_le_bytes(entry[8..16].try_into().unwrap()) >> 32 == dyn_func {
                     let offset = u64::from_le_bytes(entry[0..8].try_into().unwrap());
                     let addr = self.v2p(offset as usize, ".got.plt");
                     let new_func_addr = self.get_func_addr_by_name(new_func_name);
                     self.output[addr..addr + 8]
                         .copy_from_slice(&new_func_addr.unwrap().to_le_bytes());
+
                     return Ok(());
                 }
             }
@@ -303,13 +305,14 @@ impl Obfuscator {
             for i in 0..section_size / entry_size {
                 let entry = &self.input[section_addr..section_addr + section_size]
                     [i * entry_size..(i + 1) * entry_size];
-                let info = (u32::from_le_bytes(entry[8..16].try_into().unwrap()) >> 8) as u64;
-                if info == id {
+
+                if (u32::from_le_bytes(entry[8..16].try_into().unwrap()) >> 8) as u64 == dyn_func {
                     let offset = u32::from_le_bytes(entry[0..4].try_into().unwrap());
                     let addr = self.v2p(offset as usize, ".got.plt");
                     let new_func_addr = self.get_func_addr_by_name(new_func_name);
                     self.output[addr..addr + 4]
                         .copy_from_slice(&new_func_addr.unwrap().to_le_bytes());
+
                     return Ok(());
                 }
             }
