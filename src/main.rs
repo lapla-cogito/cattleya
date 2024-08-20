@@ -1,3 +1,4 @@
+mod error;
 mod obfus;
 mod util;
 
@@ -45,15 +46,27 @@ struct Args {
     section: String,
     #[arg(short, long, help = "recursive", default_value = "")]
     recursive: String,
+    #[arg(short, long, help = "perform GOT overwrite", default_value = "false")]
+    got: bool,
+    #[arg(
+        long,
+        help = "GOT overwrite target library function name",
+        default_value = ""
+    )]
+    got_l: String,
+    #[arg(long, help = "GOT overwrite target function name", default_value = "")]
+    got_f: String,
 }
 
-fn main() {
+fn main() -> crate::error::Result<()> {
     use clap::Parser as _;
     let args = Args::parse();
 
     if args.recursive.is_empty() {
         if args.input.is_empty() {
-            panic!("input file name is required");
+            return Err(crate::error::Error::InvalidOption(
+                "input file name is required",
+            ));
         }
 
         let output_path = if !args.output.is_empty() {
@@ -62,13 +75,15 @@ fn main() {
             "obfuscated"
         };
 
-        exec_obfus(&args.input, output_path, &args).unwrap_or(());
+        exec_obfus(&args.input, output_path, &args).unwrap();
     } else {
         if !args.input.is_empty() {
-            panic!("both input file name and recursive option are not allowed");
+            return Err(crate::error::Error::InvalidOption(
+                "both input file name and recursive option are not allowed",
+            ));
         }
         if !args.output.is_empty() {
-            println!("output file name will be ignored");
+            eprintln!("output file name will be ignored");
         }
 
         let entries = util::RecursiveDir::new(&args.recursive)
@@ -83,16 +98,18 @@ fn main() {
             std::fs::create_dir_all(dir).unwrap();
             std::fs::File::create(&output_path).unwrap();
 
-            exec_obfus(entry.to_str().unwrap(), &output_path, &args).unwrap_or(());
+            exec_obfus(entry.to_str().unwrap(), &output_path, &args).unwrap();
         }
     }
+
+    Ok(())
 }
 
-fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> std::io::Result<()> {
+fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error::Result<()> {
     let loader = obfus::Obfuscator::open(input_path, output_path);
     let mut obfuscator = loader.unwrap();
 
-    match obfuscator.is_elf() && obfuscator.is_64bit() {
+    match obfuscator.is_elf() {
         true => {
             println!("start obfuscating {}...", input_path);
 
@@ -106,21 +123,28 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> std::io::Resu
                 obfuscator.nullify_sec_hdr();
             }
             if args.symbol {
-                obfuscator.nullify_section(".strtab");
+                obfuscator.nullify_section(".strtab")?;
             }
             if args.comment {
-                obfuscator.nullify_section(".comment");
+                obfuscator.nullify_section(".comment")?;
             }
             if !args.section.is_empty() {
-                obfuscator.nullify_section(&args.section);
+                obfuscator.nullify_section(&args.section)?;
+            }
+            if args.got {
+                if args.got_l.is_empty() || args.got_f.is_empty() {
+                    return Err(crate::error::Error::InvalidOption(
+                        "both library and function names are required",
+                    ));
+                }
+
+                obfuscator.got_overwrite(&args.got_l, &args.got_f)?;
             }
 
             println!("obfuscation done!");
             Ok(())
         }
-        false => {
-            panic!("not a valid ELF file: {}", args.input);
-        }
+        false => Err(crate::error::Error::InvalidMagic),
     }
 }
 
@@ -170,7 +194,7 @@ mod tests {
     fn null_symbol_name() {
         let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_symbol");
         let mut obfuscator = loader.unwrap();
-        obfuscator.nullify_section(".strtab");
+        obfuscator.nullify_section(".strtab").unwrap();
         let output = std::process::Command::new("readelf")
             .args(["-x29", "bin/res_symbol"])
             .output()
@@ -190,7 +214,7 @@ mod tests {
     fn null_comment() {
         let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_comment");
         let mut obfuscator = loader.unwrap();
-        obfuscator.nullify_section(".comment");
+        obfuscator.nullify_section(".comment").unwrap();
         let output = std::process::Command::new("readelf")
             .args(["-x27", "bin/res_comment"])
             .output()

@@ -18,6 +18,9 @@ Options:
       --comment                nullify comment section in the ELF
       --section <SECTION>      nullify section in the ELF [default: ]
   -r, --recursive <RECURSIVE>  recursive [default: ]
+  -g, --got                    perform GOT overwrite
+      --got-l <GOT_L>          GOT overwrite target library function name [default: ]
+      --got-f <GOT_F>          GOT overwrite target function name [default: ]
   -h, --help                   Print help
   -V, --version                Print version
 ```
@@ -132,6 +135,36 @@ Hex dump of section '.comment':
   0x00000000 00000000 00000000 00000000 00000000 ................
   0x00000010 00000000 00000000 00000000 00000000 ................
   0x00000020 00000000 00000000 000000            ...........
+```
+
+## GOT overwrite
+
+Overwrites the GOT section with a specified value
+
+```
+$ cattleya -i bin/got --got --got-l system --got-f secret -o bin/res_got
+$ ./bin/res_got
+secret function called
+```
+
+As shown below, only the system function is called in the main function as far as disassembly is concerned:
+
+```
+$ objdump -d bin/res_got
+...
+00000000004011d2 <main>:
+  4011d2:       f3 0f 1e fa             endbr64
+  4011d6:       55                      push   %rbp
+  4011d7:       48 89 e5                mov    %rsp,%rbp
+  4011da:       48 83 ec 10             sub    $0x10,%rsp
+  4011de:       48 8d 05 36 0e 00 00    lea    0xe36(%rip),%rax        # 40201b <_IO_stdin_used+0x1b>
+  4011e5:       48 89 c7                mov    %rax,%rdi
+  4011e8:       e8 73 fe ff ff          call   401060 <system@plt>
+  4011ed:       89 45 fc                mov    %eax,-0x4(%rbp)
+  4011f0:       b8 00 00 00 00          mov    $0x0,%eax
+  4011f5:       c9                      leave
+  4011f6:       c3                      ret
+...
 ```
 
 # Recursive option

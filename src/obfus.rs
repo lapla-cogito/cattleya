@@ -29,14 +29,16 @@ pub struct Obfuscator {
     sec_hdr_size: u64,
     sec_hdr_offset: u64,
     sec_table: u64,
+    dyn_strings: String,
+    string_table: String,
 }
 
 impl Obfuscator {
-    pub fn open(input_path: &str, output_path: &str) -> std::io::Result<Obfuscator> {
+    pub fn open(input_path: &str, output_path: &str) -> crate::error::Result<Obfuscator> {
         let file = match std::fs::OpenOptions::new().read(true).open(input_path) {
             Ok(file) => file,
             Err(e) => {
-                panic!("failed to open file: {}", e);
+                return Err(crate::error::Error::OpenFile(e));
             }
         };
 
@@ -49,18 +51,23 @@ impl Obfuscator {
         {
             Ok(file) => file,
             Err(e) => {
-                panic!("failed to create file: {}", e);
+                return Err(crate::error::Error::CreateFile(e));
             }
         };
 
         let mut input_contents = Vec::new();
-        file.try_clone()?
+        file.try_clone()
+            .map_err(crate::error::Error::Io)?
             .take(usize::MAX as u64)
-            .read_to_end(&mut input_contents)?;
-        output_file.write_all(&input_contents)?;
+            .read_to_end(&mut input_contents)
+            .map_err(crate::error::Error::Io)?;
+        output_file
+            .write_all(&input_contents)
+            .map_err(crate::error::Error::Io)?;
 
-        let input = unsafe { memmap2::Mmap::map(&file)? };
-        let output = unsafe { memmap2::MmapMut::map_mut(&output_file)? };
+        let input = unsafe { memmap2::Mmap::map(&file).map_err(crate::error::Error::Mmap)? };
+        let output =
+            unsafe { memmap2::MmapMut::map_mut(&output_file).map_err(crate::error::Error::Mmap)? };
 
         let elf_hdr: ElfHeader = unsafe { std::ptr::read(input.as_ptr() as *const ElfHeader) };
 
@@ -106,7 +113,7 @@ impl Obfuscator {
 
         let sec_hdr = String::from_utf8_lossy(&data_copy).to_string();
 
-        Ok(Obfuscator {
+        let mut obfus = Obfuscator {
             input,
             output,
             sec_hdr,
@@ -114,7 +121,21 @@ impl Obfuscator {
             sec_hdr_size,
             sec_hdr_offset,
             sec_table,
-        })
+            dyn_strings: String::new(),
+            string_table: String::new(),
+        };
+
+        let (section_addr, section_size, _, _) = obfus.get_section(".dynstr").unwrap();
+        obfus.dyn_strings =
+            String::from_utf8_lossy(&obfus.input[section_addr..section_addr + section_size])
+                .to_string();
+
+        let (section_addr, section_size, _, _) = obfus.get_section(".strtab").unwrap();
+        obfus.string_table =
+            String::from_utf8_lossy(&obfus.input[section_addr..section_addr + section_size])
+                .to_string();
+
+        Ok(obfus)
     }
 
     pub fn is_elf(&self) -> bool {
@@ -125,10 +146,25 @@ impl Obfuscator {
         self.input[4] == 2
     }
 
-    fn get_section(&self, section: &str) -> (usize, usize) {
+    fn is_enable_pie(&self) -> bool {
+        self.input[16] != 2
+    }
+
+    fn is_stripped(&self) -> bool {
+        self.get_section(".symtab").unwrap().0 == 0
+    }
+
+    fn v2p(&self, virtual_addr: usize, section: &str) -> usize {
+        let (section_addr, _, _, vaddr) = self.get_section(section).unwrap();
+
+        section_addr + virtual_addr - vaddr
+    }
+
+    // (section_addr, section_size, entry_size, vaddr)
+    fn get_section(&self, section: &str) -> crate::error::Result<(usize, usize, usize, usize)> {
         let searched_idx = self.sec_hdr.find(section).unwrap_or(usize::MAX);
         if searched_idx == usize::MAX {
-            panic!("section not found");
+            return Err(crate::error::Error::InvalidOption("section not found"));
         }
 
         for i in 0..self.sec_hdr_num {
@@ -137,14 +173,26 @@ impl Obfuscator {
                 .to_vec();
             let string_offset = u32::from_le_bytes(sec_hdr[0..4].try_into().unwrap());
             if string_offset == searched_idx as u32 {
-                return (
-                    u64::from_le_bytes(sec_hdr[24..32].try_into().unwrap()) as usize,
-                    u64::from_le_bytes(sec_hdr[32..40].try_into().unwrap()) as usize,
-                );
+                if self.is_64bit() {
+                    return Ok((
+                        u64::from_le_bytes(sec_hdr[24..32].try_into().unwrap()) as usize,
+                        u64::from_le_bytes(sec_hdr[32..40].try_into().unwrap()) as usize,
+                        u64::from_le_bytes(sec_hdr[56..64].try_into().unwrap()) as usize,
+                        u64::from_le_bytes(sec_hdr[16..24].try_into().unwrap()) as usize,
+                    ));
+                } else {
+                    return Ok((
+                        u32::from_le_bytes(sec_hdr[16..20].try_into().unwrap()) as usize,
+                        u32::from_le_bytes(sec_hdr[20..24].try_into().unwrap()) as usize,
+                        u32::from_le_bytes(sec_hdr[36..40].try_into().unwrap()) as usize,
+                        u32::from_le_bytes(sec_hdr[12..16].try_into().unwrap()) as usize,
+                    ));
+                }
             }
         }
 
-        (usize::MAX, usize::MAX)
+        // section not found
+        Err(crate::error::Error::InvalidOption("section not found"))
     }
 
     pub fn change_class(&mut self) {
@@ -164,14 +212,108 @@ impl Obfuscator {
         }
     }
 
-    pub fn nullify_section(&mut self, section: &str) {
-        let (section_addr, section_size) = self.get_section(section);
+    pub fn nullify_section(&mut self, section: &str) -> crate::error::Result<()> {
+        let (section_addr, section_size, _, _) = self.get_section(section).unwrap();
         if section_addr == usize::MAX {
-            panic!("section not found");
+            return Err(crate::error::Error::InvalidOption("section not found"));
         }
 
         for i in section_addr..section_addr + section_size {
             self.output[i] = 0;
         }
+
+        Ok(())
+    }
+
+    fn get_dyn_func_id(&self, function: &str) -> u64 {
+        let idx = self.dyn_strings.find(function).unwrap();
+        let (section_addr, section_size, entry_size, _) = self.get_section(".dynsym").unwrap();
+
+        let dynsym_section = &self.input[section_addr..section_addr + section_size];
+
+        for i in 0..section_size / entry_size {
+            let entry = &dynsym_section[i * entry_size..(i + 1) * entry_size];
+            let name_offset = u32::from_le_bytes(entry[0..4].try_into().unwrap());
+            if name_offset == idx as u32 {
+                return i as u64;
+            }
+        }
+
+        0
+    }
+
+    fn get_func_addr_by_name(&self, function: &str) -> crate::error::Result<u64> {
+        let idx = self.string_table.find(function).unwrap();
+        let (section_addr, section_size, entry_size, _) = self.get_section(".symtab").unwrap();
+
+        let dynsym_section = &self.input[section_addr..section_addr + section_size];
+
+        for i in 0..section_size / entry_size {
+            let entry = &dynsym_section[i * entry_size..(i + 1) * entry_size];
+            if self.is_64bit() {
+                if u32::from_le_bytes(entry[0..4].try_into().unwrap()) == idx as u32 {
+                    return Ok(u64::from_le_bytes(entry[8..16].try_into().unwrap()));
+                }
+            } else if u32::from_le_bytes(entry[0..4].try_into().unwrap()) == idx as u32 {
+                return Ok(u32::from_le_bytes(entry[4..8].try_into().unwrap()) as u64);
+            }
+        }
+
+        Err(crate::error::Error::NotFound(
+            "function not found".to_owned() + function,
+        ))
+    }
+
+    pub fn got_overwrite(
+        &mut self,
+        function: &str,
+        new_func_addr: &str,
+    ) -> crate::error::Result<()> {
+        if self.is_enable_pie() {
+            return Err(crate::error::Error::InvalidOption(
+                "replacing GOT get will no effect with PIE enabled",
+            ));
+        } else if self.is_stripped() {
+            return Err(crate::error::Error::InvalidOption(
+                "cannot overwrite GOT with stripped binary",
+            ));
+        }
+
+        let id = self.get_dyn_func_id(function);
+
+        if self.is_64bit() {
+            let (section_addr, section_size, entry_size, _) =
+                self.get_section(".rela.plt").unwrap();
+            for i in 0..section_size / entry_size {
+                let entry = &self.input[section_addr..section_addr + section_size]
+                    [i * entry_size..(i + 1) * entry_size];
+                let info = u64::from_le_bytes(entry[8..16].try_into().unwrap()) >> 32;
+                if info == id {
+                    let offset = u64::from_le_bytes(entry[0..8].try_into().unwrap());
+                    let addr = self.v2p(offset as usize, ".got.plt");
+                    let new_func_addr = self.get_func_addr_by_name(new_func_addr);
+                    self.output[addr..addr + 8]
+                        .copy_from_slice(&new_func_addr.unwrap().to_le_bytes());
+                    return Ok(());
+                }
+            }
+        } else {
+            let (section_addr, section_size, entry_size, _) = self.get_section(".rel.plt").unwrap();
+            for i in 0..section_size / entry_size {
+                let entry = &self.input[section_addr..section_addr + section_size]
+                    [i * entry_size..(i + 1) * entry_size];
+                let info = (u32::from_le_bytes(entry[8..16].try_into().unwrap()) >> 8) as u64;
+                if info == id {
+                    let offset = u32::from_le_bytes(entry[0..4].try_into().unwrap());
+                    let addr = self.v2p(offset as usize, ".got.plt");
+                    let new_func_addr = self.get_func_addr_by_name(new_func_addr);
+                    self.output[addr..addr + 4]
+                        .copy_from_slice(&new_func_addr.unwrap().to_le_bytes());
+                    return Ok(());
+                }
+            }
+        }
+
+        Err(crate::error::Error::Obfuscation("failed to overwrite GOT"))
     }
 }
