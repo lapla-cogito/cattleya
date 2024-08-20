@@ -192,7 +192,9 @@ impl Obfuscator {
         }
 
         // section not found
-        Err(crate::error::Error::InvalidOption("section not found"))
+        Err(crate::error::Error::NotFound(
+            "section not found".to_owned() + section,
+        ))
     }
 
     pub fn change_class(&mut self) {
@@ -213,10 +215,7 @@ impl Obfuscator {
     }
 
     pub fn nullify_section(&mut self, section: &str) -> crate::error::Result<()> {
-        let (section_addr, section_size, _, _) = self.get_section(section).unwrap();
-        if section_addr == usize::MAX {
-            return Err(crate::error::Error::InvalidOption("section not found"));
-        }
+        let (section_addr, section_size, _, _) = self.get_section(section)?;
 
         for i in section_addr..section_addr + section_size {
             self.output[i] = 0;
@@ -225,7 +224,7 @@ impl Obfuscator {
         Ok(())
     }
 
-    fn get_dyn_func_id(&self, function: &str) -> u64 {
+    fn get_dyn_func_id(&self, function: &str) -> crate::error::Result<u64> {
         let idx = self.dyn_strings.find(function).unwrap();
         let (section_addr, section_size, entry_size, _) = self.get_section(".dynsym").unwrap();
 
@@ -235,11 +234,13 @@ impl Obfuscator {
             let entry = &dynsym_section[i * entry_size..(i + 1) * entry_size];
             let name_offset = u32::from_le_bytes(entry[0..4].try_into().unwrap());
             if name_offset == idx as u32 {
-                return i as u64;
+                return Ok(i as u64);
             }
         }
 
-        0
+        Err(crate::error::Error::NotFound(
+            "function not found".to_owned() + function,
+        ))
     }
 
     fn get_func_addr_by_name(&self, function: &str) -> crate::error::Result<u64> {
@@ -266,8 +267,8 @@ impl Obfuscator {
 
     pub fn got_overwrite(
         &mut self,
-        function: &str,
-        new_func_addr: &str,
+        target_function_name: &str,
+        new_func_name: &str,
     ) -> crate::error::Result<()> {
         if self.is_enable_pie() {
             return Err(crate::error::Error::InvalidOption(
@@ -279,7 +280,7 @@ impl Obfuscator {
             ));
         }
 
-        let id = self.get_dyn_func_id(function);
+        let id = self.get_dyn_func_id(target_function_name)?;
 
         if self.is_64bit() {
             let (section_addr, section_size, entry_size, _) =
@@ -291,7 +292,7 @@ impl Obfuscator {
                 if info == id {
                     let offset = u64::from_le_bytes(entry[0..8].try_into().unwrap());
                     let addr = self.v2p(offset as usize, ".got.plt");
-                    let new_func_addr = self.get_func_addr_by_name(new_func_addr);
+                    let new_func_addr = self.get_func_addr_by_name(new_func_name);
                     self.output[addr..addr + 8]
                         .copy_from_slice(&new_func_addr.unwrap().to_le_bytes());
                     return Ok(());
@@ -306,7 +307,7 @@ impl Obfuscator {
                 if info == id {
                     let offset = u32::from_le_bytes(entry[0..4].try_into().unwrap());
                     let addr = self.v2p(offset as usize, ".got.plt");
-                    let new_func_addr = self.get_func_addr_by_name(new_func_addr);
+                    let new_func_addr = self.get_func_addr_by_name(new_func_name);
                     self.output[addr..addr + 4]
                         .copy_from_slice(&new_func_addr.unwrap().to_le_bytes());
                     return Ok(());
