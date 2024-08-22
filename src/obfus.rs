@@ -152,7 +152,7 @@ impl Obfuscator {
     }
 
     fn is_stripped(&self) -> bool {
-        self.get_section(".symtab").unwrap().0 == 0
+        self.get_section(".symtab").is_err()
     }
 
     fn v2p(&self, virtual_addr: usize, section: &str) -> usize {
@@ -341,15 +341,14 @@ impl Obfuscator {
             .truncate(true)
             .open("/tmp/cattleya_encrypted_function_name")
             .map_err(crate::error::Error::CreateFile)?;
-        let mut writer = aesstream::AesWriter::new(tmp_file, encryptor).unwrap();
-        writer
+        aesstream::AesWriter::new(tmp_file, encryptor)
+            .map_err(crate::error::Error::OpenFile)?
             .write_all(function.as_bytes())
             .map_err(crate::error::Error::Io)?;
 
         let mut encrypted_function_name = Vec::new();
-        let mut tmp_file = std::fs::File::open("/tmp/cattleya_encrypted_function_name")
-            .map_err(crate::error::Error::OpenFile)?;
-        tmp_file
+        std::fs::File::open("/tmp/cattleya_encrypted_function_name")
+            .map_err(crate::error::Error::OpenFile)?
             .read_to_end(&mut encrypted_function_name)
             .map_err(crate::error::Error::Io)?;
 
@@ -359,7 +358,6 @@ impl Obfuscator {
             self.output[section_addr + idx..section_addr + idx + function.len()]
                 .copy_from_slice(&encrypted_function_name);
         } else {
-            let mut encrypted_function_name = encrypted_function_name;
             encrypted_function_name.resize(function.len(), 0);
             self.output[section_addr + idx..section_addr + idx + function.len()]
                 .copy_from_slice(&encrypted_function_name);

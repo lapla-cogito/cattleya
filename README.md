@@ -41,7 +41,7 @@ $ cattleya -i input -e
 start obfuscating input...
 obfuscation done!
 
-$ readeld -h input
+$ readelf -h input
 ELF Header:
   Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 
   Class:                             ELF64
@@ -151,7 +151,7 @@ Hex dump of section '.comment':
 Encrypts the name of a specific function with AES 256bit using the given key:
 
 ```
-$ cargo run -- -i bin/test_64bit --encrypt --encrypt-f fac --encrypt-key foo -o bin/res_enc
+$ cattleya -i bin/test_64bit --encrypt --encrypt-f fac --encrypt-key foo -o bin/res_enc
 start obfuscating bin/test_64bit...
 obfuscation done!
 $ ./bin/res_enc
