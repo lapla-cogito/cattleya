@@ -9,20 +9,23 @@ A CLI application to obfuscate ELF file(s)
 Usage: cattleya [OPTIONS]
 
 Options:
-  -i, --input <INPUT>          input file name [default: ]
-  -o, --output <OUTPUT>        output file name [default: ]
-  -c, --class                  change architecture class in the ELF
-  -e, --endian                 change endian in the ELF
-  -s, --sechdr                 nullify section header in the ELF
-      --symbol                 nullify symbols in the ELF
-      --comment                nullify comment section in the ELF
-      --section <SECTION>      nullify section in the ELF [default: ]
-  -r, --recursive <RECURSIVE>  recursive [default: ]
-  -g, --got                    perform GOT overwrite
-      --got-l <GOT_L>          GOT overwrite target library function name [default: ]
-      --got-f <GOT_F>          GOT overwrite target function name [default: ]
-  -h, --help                   Print help
-  -V, --version                Print version
+  -i, --input <INPUT>              input file name [default: ]
+  -o, --output <OUTPUT>            output file name [default: ]
+  -c, --class                      change architecture class in the ELF
+  -e, --endian                     change endian in the ELF
+  -s, --sechdr                     nullify section header in the ELF
+      --symbol                     nullify symbols in the ELF
+      --comment                    nullify comment section in the ELF
+      --section <SECTION>          nullify section in the ELF [default: ]
+  -r, --recursive <RECURSIVE>      recursive [default: ]
+  -g, --got                        perform GOT overwrite
+      --got-l <GOT_L>              GOT overwrite target library function name [default: ]
+      --got-f <GOT_F>              GOT overwrite target function name [default: ]
+      --encrypt                    encrypt function name with the given key
+      --encrypt-f <ENCRYPT_F>      encryption target function name [default: ]
+      --encrypt-key <ENCRYPT_KEY>  encryption key [default: ]
+  -h, --help                       Print help
+  -V, --version                    Print version
 ```
 
 Both input and recursive options cannot be empty.
@@ -143,12 +146,58 @@ Hex dump of section '.comment':
   0x00000020 00000000 00000000 000000            ...........
 ```
 
+## function name encryption
+
+Encrypts the name of a specific function with AES 256bit using the given key:
+
+```
+$ cargo run -- -i bin/test_64bit --encrypt --encrypt-f fac --encrypt-key foo -o bin/res_enc
+start obfuscating bin/test_64bit...
+obfuscation done!
+$ ./bin/res_enc
+fac(1)=1
+fib(1)=1
+fac(5)=120
+fib(5)=5
+fac(10)=3628800
+fib(10)=55
+$ objdump -d bin/res_enc
+...
+000000000000120c <main>:
+    120c:       f3 0f 1e fa             endbr64 
+    1210:       55                      push   %rbp
+    1211:       48 89 e5                mov    %rsp,%rbp
+    1214:       48 83 ec 10             sub    $0x10,%rsp
+    1218:       89 7d fc                mov    %edi,-0x4(%rbp)
+    121b:       48 89 75 f0             mov    %rsi,-0x10(%rbp)
+    121f:       bf 01 00 00 00          mov    $0x1,%edi
+    1224:       e8 20 ff ff ff          call   1149 <�0,>
+    1229:       bf 01 00 00 00          mov    $0x1,%edi
+    122e:       e8 6a ff ff ff          call   119d <fib>
+    1233:       bf 05 00 00 00          mov    $0x5,%edi
+    1238:       e8 0c ff ff ff          call   1149 <�0,>
+    123d:       bf 05 00 00 00          mov    $0x5,%edi
+    1242:       e8 56 ff ff ff          call   119d <fib>
+    1247:       bf 0a 00 00 00          mov    $0xa,%edi
+    124c:       e8 f8 fe ff ff          call   1149 <�0,>
+    1251:       bf 0a 00 00 00          mov    $0xa,%edi
+    1256:       e8 42 ff ff ff          call   119d <fib>
+    125b:       b8 00 00 00 00          mov    $0x0,%eax
+    1260:       c9                      leave  
+    1261:       c3                      ret
+...
+```
+
+Function name "fac" is encrypted.
+
 ## GOT overwrite
 
 Overwrites the GOT section with a specified value
 
 ```
 $ cattleya -i bin/got --got --got-l system --got-f secret -o bin/res_got
+start obfuscating bin/got...
+obfuscation done!
 $ ./bin/res_got
 secret function called
 ```
