@@ -21,6 +21,9 @@ pub enum Error {
     #[error("failed to process obfuscation: {0}")]
     Obfuscation(&'static str),
 
+    #[error("failed to remove file: {0}")]
+    RemoveFile(std::io::Error),
+
     #[error("not found: {0}")]
     NotFound(String),
 }

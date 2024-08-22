@@ -347,7 +347,7 @@ impl Obfuscator {
             .map_err(crate::error::Error::Io)?;
 
         let mut encrypted_function_name = Vec::new();
-        let mut tmp_file = std::fs::File::open("/tmp/encrypted_function_name")
+        let mut tmp_file = std::fs::File::open("/tmp/cattleya_encrypted_function_name")
             .map_err(crate::error::Error::OpenFile)?;
         tmp_file
             .read_to_end(&mut encrypted_function_name)
@@ -364,6 +364,9 @@ impl Obfuscator {
             self.output[section_addr + idx..section_addr + idx + function.len()]
                 .copy_from_slice(&encrypted_function_name);
         }
+
+        std::fs::remove_file("/tmp/cattleya_encrypted_function_name")
+            .map_err(crate::error::Error::RemoveFile)?;
 
         Ok(())
     }
