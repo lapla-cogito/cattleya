@@ -321,4 +321,50 @@ impl Obfuscator {
 
         Err(crate::error::Error::Obfuscation("failed to overwrite GOT"))
     }
+
+    pub fn encrypt_function_name(&mut self, function: &str, key: &str) -> crate::error::Result<()> {
+        let mut key_bytes = [0; 32];
+        if key.len() > 32 {
+            return Err(crate::error::Error::InvalidOption(
+                "key length must be less than 32",
+            ));
+        }
+        for (i, byte) in key.bytes().enumerate() {
+            key_bytes[i] = byte;
+        }
+        let encryptor = crypto::aessafe::AesSafe256Encryptor::new(&key_bytes);
+
+        let tmp_file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open("/tmp/cattleya_encrypted_function_name")
+            .map_err(crate::error::Error::CreateFile)?;
+        let mut writer = aesstream::AesWriter::new(tmp_file, encryptor).unwrap();
+        writer
+            .write_all(function.as_bytes())
+            .map_err(crate::error::Error::Io)?;
+
+        let mut encrypted_function_name = Vec::new();
+        let mut tmp_file = std::fs::File::open("/tmp/encrypted_function_name")
+            .map_err(crate::error::Error::OpenFile)?;
+        tmp_file
+            .read_to_end(&mut encrypted_function_name)
+            .map_err(crate::error::Error::Io)?;
+
+        let idx = self.string_table.find(function).unwrap();
+        let (section_addr, _, _, _) = self.get_section(".strtab").unwrap();
+        if function.len() >= 16 {
+            self.output[section_addr + idx..section_addr + idx + function.len()]
+                .copy_from_slice(&encrypted_function_name);
+        } else {
+            let mut encrypted_function_name = encrypted_function_name;
+            encrypted_function_name.resize(function.len(), 0);
+            self.output[section_addr + idx..section_addr + idx + function.len()]
+                .copy_from_slice(&encrypted_function_name);
+        }
+
+        Ok(())
+    }
 }

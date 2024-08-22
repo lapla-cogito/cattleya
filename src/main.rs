@@ -56,6 +56,16 @@ struct Args {
     got_l: String,
     #[arg(long, help = "GOT overwrite target function name", default_value = "")]
     got_f: String,
+    #[arg(
+        long,
+        help = "encrypt function name with the given key",
+        default_value = "false"
+    )]
+    encrypt: bool,
+    #[arg(long, help = "encryption target function name", default_value = "")]
+    encrypt_f: String,
+    #[arg(long, help = "encryption key", default_value = "")]
+    encrypt_key: String,
 }
 
 fn main() -> crate::error::Result<()> {
@@ -139,6 +149,15 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error:
                 }
 
                 obfuscator.got_overwrite(&args.got_l, &args.got_f)?;
+            }
+            if args.encrypt {
+                if args.encrypt_f.is_empty() || args.encrypt_key.is_empty() {
+                    return Err(crate::error::Error::InvalidOption(
+                        "target function name and encryption key is required",
+                    ));
+                }
+
+                obfuscator.encrypt_function_name(&args.encrypt_f, &args.encrypt_key)?;
             }
 
             println!("obfuscation done!");
