@@ -108,7 +108,13 @@ fn main() -> crate::error::Result<()> {
             std::fs::create_dir_all(dir).unwrap();
             std::fs::File::create(&output_path).unwrap();
 
-            exec_obfus(entry.to_str().unwrap(), &output_path, &args).unwrap();
+            match exec_obfus(entry.to_str().unwrap(), &output_path, &args) {
+                Ok(_) => println!("obfuscation done!"),
+                Err(e) => {
+                    eprintln!("error while obfuscation: {}", e);
+                    return Err(e);
+                }
+            }
         }
     }
 
@@ -160,7 +166,6 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error:
                 obfuscator.encrypt_function_name(&args.encrypt_f, &args.encrypt_key)?;
             }
 
-            println!("obfuscation done!");
             Ok(())
         }
         false => Err(crate::error::Error::InvalidMagic),
@@ -169,6 +174,8 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error:
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::fs::PermissionsExt as _;
+
     #[test]
     fn not_elf() {
         let file = std::fs::File::open("src/main.rs").unwrap();
@@ -276,5 +283,48 @@ mod tests {
                 "  0x00000000 00000000 00000000 00000000 00000000 ................"
             );
         }
+    }
+
+    #[test]
+    fn got_overwrite() {
+        {
+            let loader = crate::obfus::Obfuscator::open("bin/got", "bin/res_got");
+            let mut obfuscator = loader.unwrap();
+            obfuscator.got_overwrite("system", "secret").unwrap();
+        }
+        {
+            let metadata = std::fs::metadata("bin/res_got").unwrap();
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(0o755);
+            std::fs::set_permissions("bin/res_got", permissions).unwrap();
+        }
+
+        let output = std::process::Command::new("./bin/res_got")
+            .output()
+            .expect("failed to execute res_got");
+
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            "secret function called\n"
+        );
+    }
+
+    #[test]
+    fn encrypt_function_name() {
+        let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_encrypt");
+        let mut obfuscator = loader.unwrap();
+        obfuscator.encrypt_function_name("fac", "foo").unwrap();
+
+        let output = std::process::Command::new("readelf")
+            .args(["-s", "bin/test_64bit"])
+            .output()
+            .expect("failed to execute readelf");
+        assert!(String::from_utf8(output.stdout).is_ok());
+
+        let output = std::process::Command::new("readelf")
+            .args(["-s", "bin/res_encrypt"])
+            .output()
+            .expect("failed to execute readelf");
+        assert!(String::from_utf8(output.stdout).is_err());
     }
 }
