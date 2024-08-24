@@ -352,14 +352,16 @@ impl Obfuscator {
 
         let idx = self.string_table.find(function).unwrap();
         let (section_addr, _, _, _) = self.get_section(".strtab").unwrap();
-        if function.len() >= 16 {
-            self.output[section_addr + idx..section_addr + idx + function.len()]
-                .copy_from_slice(&encrypted_function_name);
+
+        if function.len() > encrypted_function_name.len() {
+            let mut tmp = vec![0; function.len() - encrypted_function_name.len()];
+            encrypted_function_name.append(&mut tmp);
         } else {
-            encrypted_function_name.resize(function.len(), 0);
-            self.output[section_addr + idx..section_addr + idx + function.len()]
-                .copy_from_slice(&encrypted_function_name);
+            encrypted_function_name = encrypted_function_name[0..function.len()].to_vec();
         }
+
+        self.output[section_addr + idx..section_addr + idx + function.len()]
+            .copy_from_slice(&encrypted_function_name);
 
         std::fs::remove_file("/tmp/cattleya_encrypted_function_name")
             .map_err(crate::error::Error::RemoveFile)?;
