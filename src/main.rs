@@ -123,53 +123,51 @@ fn main() -> crate::error::Result<()> {
 
 fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error::Result<()> {
     let loader = obfus::Obfuscator::open(input_path, output_path);
-    let mut obfuscator = loader.unwrap();
+    let mut obfuscator = match loader {
+        Ok(obfuscator) => obfuscator,
+        Err(e) => return Err(e),
+    };
 
-    match obfuscator.is_elf() {
-        true => {
-            println!("start obfuscating {}...", input_path);
+    println!("start obfuscating {}...", input_path);
 
-            if args.class {
-                obfuscator.change_class();
-            }
-            if args.endian {
-                obfuscator.change_endian();
-            }
-            if args.sechdr {
-                obfuscator.nullify_sec_hdr();
-            }
-            if args.symbol {
-                obfuscator.nullify_section(".strtab")?;
-            }
-            if args.comment {
-                obfuscator.nullify_section(".comment")?;
-            }
-            if !args.section.is_empty() {
-                obfuscator.nullify_section(&args.section)?;
-            }
-            if args.got {
-                if args.got_l.is_empty() || args.got_f.is_empty() {
-                    return Err(crate::error::Error::InvalidOption(
-                        "both library and function names are required",
-                    ));
-                }
-
-                obfuscator.got_overwrite(&args.got_l, &args.got_f)?;
-            }
-            if args.encrypt {
-                if args.encrypt_f.is_empty() || args.encrypt_key.is_empty() {
-                    return Err(crate::error::Error::InvalidOption(
-                        "target function name and encryption key is required",
-                    ));
-                }
-
-                obfuscator.encrypt_function_name(&args.encrypt_f, &args.encrypt_key)?;
-            }
-
-            Ok(())
-        }
-        false => Err(crate::error::Error::InvalidMagic),
+    if args.class {
+        obfuscator.change_class();
     }
+    if args.endian {
+        obfuscator.change_endian();
+    }
+    if args.sechdr {
+        obfuscator.nullify_sec_hdr();
+    }
+    if args.symbol {
+        obfuscator.nullify_section(".strtab")?;
+    }
+    if args.comment {
+        obfuscator.nullify_section(".comment")?;
+    }
+    if !args.section.is_empty() {
+        obfuscator.nullify_section(&args.section)?;
+    }
+    if args.got {
+        if args.got_l.is_empty() || args.got_f.is_empty() {
+            return Err(crate::error::Error::InvalidOption(
+                "both library and function names are required",
+            ));
+        }
+
+        obfuscator.got_overwrite(&args.got_l, &args.got_f)?;
+    }
+    if args.encrypt {
+        if args.encrypt_f.is_empty() || args.encrypt_key.is_empty() {
+            return Err(crate::error::Error::InvalidOption(
+                "target function name and encryption key is required",
+            ));
+        }
+
+        obfuscator.encrypt_function_name(&args.encrypt_f, &args.encrypt_key)?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -178,8 +176,8 @@ mod tests {
 
     #[test]
     fn not_elf() {
-        let file = std::fs::File::open("src/main.rs").unwrap();
-        assert!(unsafe { memmap2::Mmap::map(&file).unwrap()[0..4] != crate::obfus::HEADER_MAGIC });
+        let loader = crate::obfus::Obfuscator::open("src/main.rs", "foo");
+        assert!(matches!(loader, Err(crate::error::Error::InvalidMagic)));
     }
 
     #[test]
@@ -298,7 +296,7 @@ mod tests {
             permissions.set_mode(0o755);
             std::fs::set_permissions("bin/res_got", permissions).unwrap();
         }
-
+        std::thread::sleep(std::time::Duration::from_millis(100));
         let output = std::process::Command::new("./bin/res_got")
             .output()
             .expect("failed to execute res_got");
@@ -311,20 +309,22 @@ mod tests {
 
     #[test]
     fn encrypt_function_name() {
-        let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_encrypt");
-        let mut obfuscator = loader.unwrap();
-        obfuscator.encrypt_function_name("fac", "foo").unwrap();
+        {
+            let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_encrypt");
+            let mut obfuscator = loader.unwrap();
+            obfuscator.encrypt_function_name("fac", "foo").unwrap();
+        }
 
-        let output = std::process::Command::new("readelf")
-            .args(["-s", "bin/test_64bit"])
+        let output = std::process::Command::new("nm")
+            .args(["bin/test_64bit"])
             .output()
-            .expect("failed to execute readelf");
-        assert!(String::from_utf8(output.stdout).is_ok());
+            .expect("failed to execute nm");
+        assert!(output.stdout.windows(3).any(|w| w == b"fac"));
 
-        let output = std::process::Command::new("readelf")
-            .args(["-s", "bin/res_encrypt"])
+        let output = std::process::Command::new("nm")
+            .args(["bin/res_encrypt"])
             .output()
-            .expect("failed to execute readelf");
-        assert!(String::from_utf8(output.stdout).is_err());
+            .expect("failed to execute nm");
+        assert!(!output.stdout.windows(3).any(|w| w == b"fac"));
     }
 }

@@ -1,7 +1,7 @@
 use std::io::Read as _;
 use std::io::Write as _;
 
-pub const HEADER_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
+const HEADER_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
 
 #[repr(C, packed)]
 #[derive(Debug)]
@@ -43,6 +43,11 @@ impl Obfuscator {
             }
         };
 
+        let input = unsafe { memmap2::Mmap::map(&file).map_err(crate::error::Error::Mmap)? };
+        if !Self::is_elf(&input) {
+            return Err(crate::error::Error::InvalidMagic);
+        }
+
         let mut output_file = match std::fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -66,7 +71,6 @@ impl Obfuscator {
             .write_all(&input_contents)
             .map_err(crate::error::Error::Io)?;
 
-        let input = unsafe { memmap2::Mmap::map(&file).map_err(crate::error::Error::Mmap)? };
         let output =
             unsafe { memmap2::MmapMut::map_mut(&output_file).map_err(crate::error::Error::Mmap)? };
 
@@ -139,11 +143,11 @@ impl Obfuscator {
         Ok(obfus)
     }
 
-    pub fn is_elf(&self) -> bool {
-        self.input[0..4] == HEADER_MAGIC
+    fn is_elf(mmap: &memmap2::Mmap) -> bool {
+        mmap[0..4] == HEADER_MAGIC
     }
 
-    pub fn is_64bit(&self) -> bool {
+    fn is_64bit(&self) -> bool {
         self.input[4] == 2
     }
 
@@ -323,16 +327,10 @@ impl Obfuscator {
     }
 
     pub fn encrypt_function_name(&mut self, function: &str, key: &str) -> crate::error::Result<()> {
-        let mut key_bytes = [0; 32];
-        if key.len() > 32 {
-            return Err(crate::error::Error::InvalidOption(
-                "key length must be less than 32",
-            ));
-        }
-        for (i, byte) in key.bytes().enumerate() {
-            key_bytes[i] = byte;
-        }
-        let encryptor = crypto::aessafe::AesSafe256Encryptor::new(&key_bytes);
+        use sha2::digest::Digest as _;
+
+        let hash = sha2::Sha256::digest(key.as_bytes());
+        let encryptor = crypto::aessafe::AesSafe256Encryptor::new(&hash);
 
         let tmp_file = std::fs::OpenOptions::new()
             .read(true)
