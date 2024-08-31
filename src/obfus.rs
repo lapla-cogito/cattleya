@@ -202,21 +202,27 @@ impl Obfuscator {
         ))
     }
 
-    pub fn change_class(&mut self) {
+    pub fn change_class(&mut self) -> crate::error::Result<()> {
         self.output[4] = 3 - self.output[4];
+
+        Ok(())
     }
 
-    pub fn change_endian(&mut self) {
+    pub fn change_endian(&mut self) -> crate::error::Result<()> {
         self.output[5] = 3 - self.output[5];
+
+        Ok(())
     }
 
-    pub fn nullify_sec_hdr(&mut self) {
+    pub fn nullify_sec_hdr(&mut self) -> crate::error::Result<()> {
         for i in 0..self.sec_hdr_num {
             let offset = self.sec_hdr_offset + i * self.sec_hdr_size;
             for j in offset..offset + self.sec_hdr_size {
                 self.output[j as usize] = 0;
             }
         }
+
+        Ok(())
     }
 
     pub fn nullify_section(&mut self, section: &str) -> crate::error::Result<()> {

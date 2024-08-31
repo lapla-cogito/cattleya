@@ -131,22 +131,40 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error:
     println!("start obfuscating {}...", input_path);
 
     if args.class {
-        obfuscator.change_class();
+        match obfuscator.change_class() {
+            Ok(_) => println!("change class metadata success"),
+            Err(_) => eprintln!("failed to change class metadata"),
+        }
     }
     if args.endian {
-        obfuscator.change_endian();
+        match obfuscator.change_endian() {
+            Ok(_) => println!("change endian metadata success"),
+            Err(_) => eprintln!("failed to change endian metadata"),
+        }
     }
     if args.sechdr {
-        obfuscator.nullify_sec_hdr();
+        match obfuscator.nullify_sec_hdr() {
+            Ok(_) => println!("nullify section headers success"),
+            Err(_) => eprintln!("failed to nullify section headers"),
+        }
     }
     if args.symbol {
-        obfuscator.nullify_section(".strtab")?;
+        match obfuscator.nullify_section(".strtab") {
+            Ok(_) => println!("nullify symbol table success"),
+            Err(_) => eprintln!("failed to nullify symbol table"),
+        }
     }
     if args.comment {
-        obfuscator.nullify_section(".comment")?;
+        match obfuscator.nullify_section(".comment") {
+            Ok(_) => println!("nullify comment section success"),
+            Err(_) => eprintln!("failed to nullify comment section"),
+        }
     }
     if !args.section.is_empty() {
-        obfuscator.nullify_section(&args.section)?;
+        match obfuscator.nullify_section(&args.section) {
+            Ok(_) => println!("nullify section {:?} success", &args.section),
+            Err(_) => eprintln!("failed to nullify section {:?}", &args.section),
+        }
     }
     if args.got {
         if args.got_l.is_empty() || args.got_f.is_empty() {
@@ -155,7 +173,10 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error:
             ));
         }
 
-        obfuscator.got_overwrite(&args.got_l, &args.got_f)?;
+        match obfuscator.got_overwrite(&args.got_l, &args.got_f) {
+            Ok(_) => println!("GOT overwrite success"),
+            Err(_) => eprintln!("failed to overwrite GOT"),
+        }
     }
     if args.encrypt {
         if args.encrypt_f.is_empty() || args.encrypt_key.is_empty() {
@@ -164,7 +185,10 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error:
             ));
         }
 
-        obfuscator.encrypt_function_name(&args.encrypt_f, &args.encrypt_key)?;
+        match obfuscator.encrypt_function_name(&args.encrypt_f, &args.encrypt_key) {
+            Ok(_) => println!("encrypt function name success"),
+            Err(_) => eprintln!("failed to encrypt function name"),
+        }
     }
 
     Ok(())
@@ -185,7 +209,7 @@ mod tests {
         let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_64bit");
         let mut obfuscator = loader.unwrap();
         assert_eq!(obfuscator.output[4], 2);
-        obfuscator.change_class();
+        obfuscator.change_class().unwrap();
         assert_eq!(obfuscator.output[4], 1);
     }
 
@@ -194,7 +218,7 @@ mod tests {
         let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_endian");
         let mut obfuscator = loader.unwrap();
         assert_eq!(obfuscator.output[5], 1);
-        obfuscator.change_endian();
+        obfuscator.change_endian().unwrap();
         assert_eq!(obfuscator.output[5], 2);
     }
 
@@ -202,7 +226,7 @@ mod tests {
     fn null_sec_hdr() {
         let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_sechdr");
         let mut obfuscator = loader.unwrap();
-        obfuscator.nullify_sec_hdr();
+        obfuscator.nullify_sec_hdr().unwrap();
         let output = std::process::Command::new("readelf")
             .args(["-S", "bin/res_sechdr"])
             .output()
