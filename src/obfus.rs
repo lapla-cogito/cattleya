@@ -1,5 +1,4 @@
-use std::io::Read as _;
-use std::io::Write as _;
+use std::io::{Read as _, Write as _};
 
 const HEADER_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
 
@@ -343,7 +342,7 @@ impl Obfuscator {
             .write(true)
             .create(true)
             .truncate(true)
-            .open("/tmp/cattleya_encrypted_function_name")
+            .open("/tmp/".to_owned() + function)
             .map_err(crate::error::Error::CreateFile)?;
         aesstream::AesWriter::new(tmp_file, encryptor)
             .map_err(crate::error::Error::OpenFile)?
@@ -351,7 +350,7 @@ impl Obfuscator {
             .map_err(crate::error::Error::Io)?;
 
         let mut encrypted_function_name = Vec::new();
-        std::fs::File::open("/tmp/cattleya_encrypted_function_name")
+        std::fs::File::open("/tmp/".to_owned() + function)
             .map_err(crate::error::Error::OpenFile)?
             .read_to_end(&mut encrypted_function_name)
             .map_err(crate::error::Error::Io)?;
@@ -369,7 +368,7 @@ impl Obfuscator {
         self.output[section_addr + idx..section_addr + idx + function.len()]
             .copy_from_slice(&encrypted_function_name);
 
-        std::fs::remove_file("/tmp/cattleya_encrypted_function_name")
+        std::fs::remove_file("/tmp/".to_owned() + function)
             .map_err(crate::error::Error::RemoveFile)?;
 
         Ok(())
