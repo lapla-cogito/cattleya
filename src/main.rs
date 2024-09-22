@@ -111,8 +111,9 @@ fn main() -> crate::error::Result<()> {
             match exec_obfus(entry.to_str().unwrap(), &output_path, &args) {
                 Ok(_) => println!("obfuscation done!"),
                 Err(e) => {
-                    eprintln!("error while obfuscation: {}", e);
-                    return Err(e);
+                    eprintln!("error while obfuscation of {}: {}", output_path, e);
+                    std::fs::remove_file(&output_path).unwrap();
+                    continue;
                 }
             }
         }
