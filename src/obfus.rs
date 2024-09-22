@@ -24,10 +24,8 @@ pub struct ElfHeader {
 pub struct Obfuscator {
     input: memmap2::Mmap,
     pub output: memmap2::MmapMut,
+    elf_hdr: ElfHeader,
     sec_hdr: String,
-    sec_hdr_num: u64,
-    sec_hdr_size: u64,
-    sec_hdr_offset: u64,
     sec_table: u64,
     dyn_strings: String,
     string_table: String,
@@ -75,21 +73,17 @@ impl Obfuscator {
 
         let elf_hdr: ElfHeader = unsafe { std::ptr::read(input.as_ptr() as *const ElfHeader) };
 
-        let sec_hdr_offset = elf_hdr.e_shoff as u64;
-        let sec_hdr_num = elf_hdr.e_shnum as u64;
-        let sec_hdr_size = elf_hdr.e_shentsize as u64;
-
         let sec_table = match input[4] == 2 {
             true => u64::from_le_bytes(input[40..48].try_into().unwrap()),
             false => u32::from_le_bytes(input[32..36].try_into().unwrap()) as u64,
         };
 
         let sh_table_header_addr = (u16::from_le_bytes(input[62..64].try_into().unwrap()) as u64
-            * sec_hdr_size
+            * (elf_hdr.e_shentsize as u64)
             + sec_table) as usize;
 
         let sh_table_header =
-            &input[sh_table_header_addr..sh_table_header_addr + sec_hdr_size as usize];
+            &input[sh_table_header_addr..sh_table_header_addr + elf_hdr.e_shentsize as usize];
 
         let sh_table_addr =
             u64::from_le_bytes(sh_table_header[24..32].try_into().unwrap()) as usize;
@@ -98,7 +92,7 @@ impl Obfuscator {
         let mut index = sh_table_addr;
         let mut curr_byte;
 
-        while curr_strings < sec_hdr_num as isize {
+        while curr_strings < elf_hdr.e_shnum as isize {
             curr_byte = input[index] as isize;
             if curr_byte == 0 {
                 curr_strings += 1;
@@ -121,9 +115,7 @@ impl Obfuscator {
             input,
             output,
             sec_hdr,
-            sec_hdr_num,
-            sec_hdr_size,
-            sec_hdr_offset,
+            elf_hdr,
             sec_table,
             dyn_strings: String::new(),
             string_table: String::new(),
@@ -171,10 +163,11 @@ impl Obfuscator {
             return Err(crate::error::Error::InvalidOption("section not found"));
         }
 
-        for i in 0..self.sec_hdr_num {
-            let sec_hdr = self.input[(self.sec_table + i * self.sec_hdr_size) as usize
-                ..(self.sec_table + (i + 1) * self.sec_hdr_size) as usize]
-                .to_vec();
+        for i in 0..self.elf_hdr.e_shnum as u64 {
+            let sec_hdr =
+                self.input[(self.sec_table + i * self.elf_hdr.e_shentsize as u64) as usize
+                    ..(self.sec_table + (i + 1) * self.elf_hdr.e_shentsize as u64) as usize]
+                    .to_vec();
             let string_offset = u32::from_le_bytes(sec_hdr[0..4].try_into().unwrap());
             if string_offset == searched_idx as u32 {
                 if self.is_64bit() {
@@ -214,9 +207,9 @@ impl Obfuscator {
     }
 
     pub fn nullify_sec_hdr(&mut self) -> crate::error::Result<()> {
-        for i in 0..self.sec_hdr_num {
-            let offset = self.sec_hdr_offset + i * self.sec_hdr_size;
-            for j in offset..offset + self.sec_hdr_size {
+        for i in 0..self.elf_hdr.e_shnum as u64 {
+            let offset = self.elf_hdr.e_shoff + i * self.elf_hdr.e_shentsize as u64;
+            for j in offset..offset + self.elf_hdr.e_shentsize as u64 {
                 self.output[j as usize] = 0;
             }
         }
