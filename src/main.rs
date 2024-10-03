@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn change_class_64bit() {
-        let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_64bit");
+        let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_class");
         let mut obfuscator = loader.unwrap();
         assert_eq!(obfuscator.output[4], 2);
         obfuscator.change_class().unwrap();
