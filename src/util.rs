@@ -34,3 +34,23 @@ impl Iterator for RecursiveDir {
         None
     }
 }
+
+// generate whitespace code that prints specified string
+pub fn gen_print_whitespace(input: &str) -> String {
+    let mut res = String::new();
+
+    for c in input.chars() {
+        res += "   ";
+        let binary = format!("{:b}", c as u8);
+        for c in binary.chars() {
+            if c == '0' {
+                res += " ";
+            } else {
+                res += "\t";
+            }
+        }
+        res += "\n\t\n  ";
+    }
+
+    res + "\n\n\n"
+}
