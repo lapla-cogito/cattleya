@@ -126,10 +126,13 @@ impl Obfuscator {
             String::from_utf8_lossy(&obfus.input[section_addr..section_addr + section_size])
                 .to_string();
 
-        let (section_addr, section_size, _, _) = obfus.get_section(".strtab").unwrap();
-        obfus.string_table =
-            String::from_utf8_lossy(&obfus.input[section_addr..section_addr + section_size])
-                .to_string();
+        let (section_addr, section_size, _, _) =
+            obfus.get_section(".strtab").unwrap_or((0, 0, 0, 0));
+        if section_addr != 0 && section_size != 0 {
+            obfus.string_table =
+                String::from_utf8_lossy(&obfus.input[section_addr..section_addr + section_size])
+                    .to_string();
+        }
 
         Ok(obfus)
     }
