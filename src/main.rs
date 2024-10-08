@@ -68,6 +68,13 @@ struct Args {
     encrypt_f: String,
     #[arg(long, help = "encryption key", default_value = "")]
     encrypt_key: String,
+    #[arg(
+        short,
+        long,
+        help = "print specified string before the main function executed using whitespace esolang",
+        default_value = ""
+    )]
+    whitespace: String,
 }
 
 fn main() -> Result<()> {
@@ -137,13 +144,13 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> Result<()> {
     if args.endian {
         match obfuscator.change_endian() {
             Ok(_) => println!("change endian metadata success"),
-            Err(e) => eprintln!("failed to change class metadata: {:?}", e),
+            Err(e) => eprintln!("failed to change endian metadata: {:?}", e),
         }
     }
     if args.sechdr {
         match obfuscator.nullify_sec_hdr() {
             Ok(_) => println!("nullify section headers success"),
-            Err(e) => eprintln!("failed to nullify section header: {:?}", e),
+            Err(e) => eprintln!("failed to nullify section headers: {:?}", e),
         }
     }
     if args.symbol {
@@ -161,7 +168,7 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> Result<()> {
     if !args.section.is_empty() {
         match obfuscator.nullify_section(&args.section) {
             Ok(_) => println!("nullify section {:?} success", &args.section),
-            Err(e) => eprintln!("failed to nullify section: {:?}", e),
+            Err(_) => eprintln!("failed to nullify section {:?}", &args.section),
         }
     }
     if args.got {
@@ -173,7 +180,7 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> Result<()> {
 
         match obfuscator.got_overwrite(&args.got_l, &args.got_f) {
             Ok(_) => println!("GOT overwrite success"),
-            Err(e) => eprintln!("failed to GOT overwrite: {:?}", e),
+            Err(e) => eprintln!("failed to overwrite GOT: {:?}", e),
         }
     }
     if args.encrypt {
@@ -186,6 +193,12 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> Result<()> {
         match obfuscator.encrypt_function_name(&args.encrypt_f, &args.encrypt_key) {
             Ok(_) => println!("encrypt function name success"),
             Err(e) => eprintln!("failed to encrypt function name: {:?}", e),
+        }
+    }
+    if !args.whitespace.is_empty() {
+        match obfuscator.concat_whitespace(&args.whitespace, output_path) {
+            Ok(_) => println!("whitespace code was successfully concatenated"),
+            Err(e) => eprintln!("failed to concat whitespace code: {:?}", e),
         }
     }
 
