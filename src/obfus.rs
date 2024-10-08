@@ -369,4 +369,31 @@ impl Obfuscator {
 
         Ok(())
     }
+
+    pub fn concat_whitespace(
+        &mut self,
+        output_str: &str,
+        output_path: &str,
+    ) -> crate::error::Result<()> {
+        let whitespace_program = crate::util::gen_print_whitespace(output_str);
+
+        let mut new_output = vec![0; self.output.len() + whitespace_program.len()];
+        new_output[0..self.output.len()].copy_from_slice(&self.output);
+        new_output[self.output.len()..].copy_from_slice(whitespace_program.as_bytes());
+
+        let _ = std::fs::remove_file(output_path);
+
+        let mut output_file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(output_path)
+            .map_err(crate::error::Error::CreateFile)?;
+        output_file
+            .write_all(&new_output)
+            .map_err(crate::error::Error::Io)?;
+
+        Ok(())
+    }
 }

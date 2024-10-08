@@ -68,6 +68,13 @@ struct Args {
     encrypt_f: String,
     #[arg(long, help = "encryption key", default_value = "")]
     encrypt_key: String,
+    #[arg(
+        short,
+        long,
+        help = "print specified string before the main function executed using whitespace esolang",
+        default_value = ""
+    )]
+    whitespace: String,
 }
 
 fn main() -> Result<()> {
@@ -186,6 +193,12 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> Result<()> {
         match obfuscator.encrypt_function_name(&args.encrypt_f, &args.encrypt_key) {
             Ok(_) => println!("encrypt function name success"),
             Err(e) => eprintln!("failed to encrypt function name: {e:?}"),
+        }
+    }
+    if !args.whitespace.is_empty() {
+        match obfuscator.concat_whitespace(&args.whitespace, output_path) {
+            Ok(_) => println!("whitespace code was successfully concatenated"),
+            Err(e) => eprintln!("failed to concat whitespace code: {e:?}"),
         }
     }
 
