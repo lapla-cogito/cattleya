@@ -66,6 +66,13 @@ struct Args {
     encrypt_f: String,
     #[arg(long, help = "encryption key", default_value = "")]
     encrypt_key: String,
+    #[arg(
+        short,
+        long,
+        help = "print specified string before the main function executed using whitespace esolang",
+        default_value = ""
+    )]
+    whitespace: String,
 }
 
 fn main() -> crate::error::Result<()> {
@@ -134,37 +141,37 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error:
     if args.class {
         match obfuscator.change_class() {
             Ok(_) => println!("change class metadata success"),
-            Err(_) => eprintln!("failed to change class metadata"),
+            Err(e) => eprintln!("failed to change class metadata: {:?}", e),
         }
     }
     if args.endian {
         match obfuscator.change_endian() {
             Ok(_) => println!("change endian metadata success"),
-            Err(_) => eprintln!("failed to change endian metadata"),
+            Err(e) => eprintln!("failed to change endian metadata: {:?}", e),
         }
     }
     if args.sechdr {
         match obfuscator.nullify_sec_hdr() {
             Ok(_) => println!("nullify section headers success"),
-            Err(_) => eprintln!("failed to nullify section headers"),
+            Err(e) => eprintln!("failed to nullify section headers: {:?}", e),
         }
     }
     if args.symbol {
         match obfuscator.nullify_section(".strtab") {
             Ok(_) => println!("nullify symbol table success"),
-            Err(_) => eprintln!("failed to nullify symbol table"),
+            Err(e) => eprintln!("failed to nullify symbol table: {:?}", e),
         }
     }
     if args.comment {
         match obfuscator.nullify_section(".comment") {
             Ok(_) => println!("nullify comment section success"),
-            Err(_) => eprintln!("failed to nullify comment section"),
+            Err(e) => eprintln!("failed to nullify comment section: {:?}", e),
         }
     }
     if !args.section.is_empty() {
         match obfuscator.nullify_section(&args.section) {
             Ok(_) => println!("nullify section {:?} success", &args.section),
-            Err(_) => eprintln!("failed to nullify section {:?}", &args.section),
+            Err(e) => eprintln!("failed to nullify section {:?}: {:?}", &args.section, e),
         }
     }
     if args.got {
@@ -176,7 +183,7 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error:
 
         match obfuscator.got_overwrite(&args.got_l, &args.got_f) {
             Ok(_) => println!("GOT overwrite success"),
-            Err(_) => eprintln!("failed to overwrite GOT"),
+            Err(e) => eprintln!("failed to overwrite GOT: {:?}", e),
         }
     }
     if args.encrypt {
@@ -188,7 +195,13 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error:
 
         match obfuscator.encrypt_function_name(&args.encrypt_f, &args.encrypt_key) {
             Ok(_) => println!("encrypt function name success"),
-            Err(_) => eprintln!("failed to encrypt function name"),
+            Err(e) => eprintln!("failed to encrypt function name: {:?}", e),
+        }
+    }
+    if !args.whitespace.is_empty() {
+        match obfuscator.concat_whitespace(&args.whitespace, output_path) {
+            Ok(_) => println!("whitespace code generation success"),
+            Err(e) => eprintln!("failed to generate whitespace code: {:?}", e),
         }
     }
 
