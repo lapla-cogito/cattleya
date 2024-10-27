@@ -2,6 +2,8 @@ mod error;
 mod obfus;
 mod util;
 
+pub use error::{Error, Result};
+
 #[derive(clap::Parser, Debug)]
 #[command(
     author = "lapla",
@@ -68,15 +70,13 @@ struct Args {
     encrypt_key: String,
 }
 
-fn main() -> crate::error::Result<()> {
+fn main() -> Result<()> {
     use clap::Parser as _;
     let args = Args::parse();
 
     if args.recursive.is_empty() {
         if args.input.is_empty() {
-            return Err(crate::error::Error::InvalidOption(
-                "input file name is required",
-            ));
+            return Err(Error::InvalidOption("input file name is required"));
         }
 
         let output_path = if !args.output.is_empty() {
@@ -88,7 +88,7 @@ fn main() -> crate::error::Result<()> {
         exec_obfus(&args.input, output_path, &args).unwrap();
     } else {
         if !args.input.is_empty() {
-            return Err(crate::error::Error::InvalidOption(
+            return Err(Error::InvalidOption(
                 "both input file name and recursive option are not allowed",
             ));
         }
@@ -122,7 +122,7 @@ fn main() -> crate::error::Result<()> {
     Ok(())
 }
 
-fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error::Result<()> {
+fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> Result<()> {
     let loader = obfus::Obfuscator::open(input_path, output_path);
     let mut obfuscator = match loader {
         Ok(obfuscator) => obfuscator,
@@ -134,61 +134,61 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> crate::error:
     if args.class {
         match obfuscator.change_class() {
             Ok(_) => println!("change class metadata success"),
-            Err(_) => eprintln!("failed to change class metadata"),
+            Err(e) => eprintln!("failed to change class metadata: {:?}", e),
         }
     }
     if args.endian {
         match obfuscator.change_endian() {
             Ok(_) => println!("change endian metadata success"),
-            Err(_) => eprintln!("failed to change endian metadata"),
+            Err(e) => eprintln!("failed to change class metadata: {:?}", e),
         }
     }
     if args.sechdr {
         match obfuscator.nullify_sec_hdr() {
             Ok(_) => println!("nullify section headers success"),
-            Err(_) => eprintln!("failed to nullify section headers"),
+            Err(e) => eprintln!("failed to nullify section header: {:?}", e),
         }
     }
     if args.symbol {
         match obfuscator.nullify_section(".strtab") {
             Ok(_) => println!("nullify symbol table success"),
-            Err(_) => eprintln!("failed to nullify symbol table"),
+            Err(e) => eprintln!("failed to nullify symbol table: {:?}", e),
         }
     }
     if args.comment {
         match obfuscator.nullify_section(".comment") {
             Ok(_) => println!("nullify comment section success"),
-            Err(_) => eprintln!("failed to nullify comment section"),
+            Err(e) => eprintln!("failed to nullify comment section: {:?}", e),
         }
     }
     if !args.section.is_empty() {
         match obfuscator.nullify_section(&args.section) {
             Ok(_) => println!("nullify section {:?} success", &args.section),
-            Err(_) => eprintln!("failed to nullify section {:?}", &args.section),
+            Err(e) => eprintln!("failed to nullify section: {:?}", e),
         }
     }
     if args.got {
         if args.got_l.is_empty() || args.got_f.is_empty() {
-            return Err(crate::error::Error::InvalidOption(
+            return Err(Error::InvalidOption(
                 "both library and function names are required",
             ));
         }
 
         match obfuscator.got_overwrite(&args.got_l, &args.got_f) {
             Ok(_) => println!("GOT overwrite success"),
-            Err(_) => eprintln!("failed to overwrite GOT"),
+            Err(e) => eprintln!("failed to GOT overwrite: {:?}", e),
         }
     }
     if args.encrypt {
         if args.encrypt_f.is_empty() || args.encrypt_key.is_empty() {
-            return Err(crate::error::Error::InvalidOption(
+            return Err(Error::InvalidOption(
                 "target function name and encryption key is required",
             ));
         }
 
         match obfuscator.encrypt_function_name(&args.encrypt_f, &args.encrypt_key) {
             Ok(_) => println!("encrypt function name success"),
-            Err(_) => eprintln!("failed to encrypt function name"),
+            Err(e) => eprintln!("failed to encrypt function name: {:?}", e),
         }
     }
 
@@ -202,7 +202,7 @@ mod tests {
     #[test]
     fn not_elf() {
         let loader = crate::obfus::Obfuscator::open("src/main.rs", "foo");
-        assert!(matches!(loader, Err(crate::error::Error::InvalidMagic)));
+        assert!(matches!(loader, Err(crate::Error::InvalidMagic)));
     }
 
     #[test]

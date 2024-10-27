@@ -1,10 +1,39 @@
 # cattleya
-An ELF obfuscator written in Rust
+
+ELFファイルを入力として，それを様々な手法で難読化するCLIアプリケーションです．Rustで書かれています．
 
 > [!NOTE]
-> [日本語版のREADME](./README_ja.md)もあります（README in Japanese is also available）
+> 手っ取り早く各難読化が施されたバイナリが欲しい場合，`cargo`と`readelf`，`nm`があってELFバイナリを実行できる環境でこのリポジトリをcloneして次のコマンドを実行してください：
+> 
+> ```
+> $ cargo test
+> ```
+> 
+> これは`src/main.rs`中のテストをまとめて実行するもので，この後で示す各難読化手法のテストが行われます．テストが通れば，`bin`ディレクトリ中に各難読化手法が適用されたバイナリが生成されているはずです．それぞれの難読化手法に対応するバイナリ名は次の通りです：
+> 
+> - エンディアン詐称: `res_endian`
+> - アーキテクチャ詐称: `res_class`
+> - セクションヘッダー情報隠蔽: `res_sechdr`
+> - シンボル名隠蔽: `res_symbol`
+> - コメントセクション隠蔽: `res_comment`
+> - 関数名暗号化: `res_encrypt`
+> - GOT overwrite: `res_got`
+
+# 目次
+
+- [How to use](#how-to-use)
+- [各難読化手法の説明](#各難読化手法の説明)
+  - [エンディアンを詐称する](#エンディアンを詐称する)
+  - [ターゲットアーキテクチャを詐称する](#ターゲットアーキテクチャを詐称する)
+  - [セクションヘッダー情報を隠蔽する](#セクションヘッダー情報を隠蔽する)
+  - [シンボル名を隠蔽する](#シンボル名を隠蔽する)
+  - [コメントセクションを隠蔽する](#コメントセクションを隠蔽する)
+  - [関数名を難読化する](#関数名を難読化する)
+  - [GOT overwrite](#got-overwrite)
+- [ディレクトリに対して再帰的に難読化を適用する](#ディレクトリに対して再帰的に難読化を適用する)
 
 # How to use
+
 ```
 $ cattleya -h
 A CLI application to obfuscate ELF file(s)
@@ -31,13 +60,13 @@ Options:
   -V, --version                    Print version
 ```
 
-Both input and recursive options cannot be empty.
+`--input`オプションと`--recursive`オプションがどちらも空である実行は許容されません
 
-# Obfuscation methods
+# 各難読化手法の説明
 
-## Endian obfuscation
+## エンディアンを詐称する
 
-Obfuscates by changing the part of the ELF file that indicates endianness
+ELFヘッダーに存在する，エンディアンのメタデータを示すバイトを書き換えることで解析ツールが解析をできないようにします（実際のエンディアンは書き換えません）
 
 ```
 $ cattleya -i input -e
@@ -62,8 +91,11 @@ $ objdump -d obfuscated
 objdump: obfuscated: file format not recognized
 ```
 
-## Architcture obfuscation
-Obfuscates by changing the part of the ELF file that indicates the architecture (32bit or 64bit)
+難読化が施されたファイルを実行しても目に見える実行結果は変わりませんが，`objdump`を用いて逆アセンブルしようとするとできないことが分かります．これ以外にも`gdb`などの解析ツールもそのままでは正しく刺さりません．
+
+## ターゲットアーキテクチャを詐称する
+
+ELFヘッダーに存在する，アーキテクチャのメタデータを示すバイトを書き換えることで解析ツールが解析をできないようにします
 
 ```
 $ cattleya -i input -c
@@ -80,9 +112,11 @@ $ objdump -d obfuscated
 objdump: obfuscated: file format not recognized
 ```
 
-## Section header obfuscation
+エンディアン詐称と同様に，`objdump`を用いて逆アセンブルしようとするとできないことが分かります
 
-Obfuscates by keeping section header information confidential
+## セクションヘッダー情報を隠蔽する
+
+セクションヘッダー情報を削除します
 
 ```
 $ cattleya -i input -s
@@ -95,9 +129,11 @@ $ readelf -S obfuscated > /dev/null
 readelf: Error: no .dynamic section in the dynamic segment
 ```
 
-## Nullify symbol names obfuscation
+逆アセンブルなどが刺さりません．`gdb`などで雑に`b main`もできません．
 
-Erases symbol names in the target
+## シンボル名を隠蔽する
+
+シンボルテーブルからシンボル名を削除します
 
 ```
 $ cattleya -i input --symbol
@@ -125,9 +161,11 @@ Hex dump of section '':
 ...
 ```
 
-## Nullify comments obfuscation
+シンボル名が消えています．なので関数名や変数名が解析中に分からなくなります．`ghidra`などでも解析結果がそれなりに壊れます
 
-Erases comments in the target
+## コメントセクションを隠蔽する
+
+コメントセクションを削除します
 
 ```
 $ cattleya -i input --comment
@@ -149,21 +187,17 @@ Hex dump of section '.comment':
   0x00000020 00000000 00000000 000000            ...........
 ```
 
-## Function name encryption
+どのコンパイラやOSの上でコンパイルされたのかの情報が削除されています
 
-Encrypts the name of a specific function with AES 256bit using the given key:
+## 関数名を難読化する
+
+引数で与えられたキーを用いて特定の関数の名前を難読化します．人間が関数名から動きを推察しづらくなる効果が期待できます．
 
 ```
 $ cattleya -i bin/test_64bit --encrypt --encrypt-f fac --encrypt-key foo -o bin/res_enc
 start obfuscating bin/test_64bit...
 obfuscation done!
-$ ./bin/res_enc
-fac(1)=1
-fib(1)=1
-fac(5)=120
-fib(5)=5
-fac(10)=3628800
-fib(10)=55
+
 $ objdump -d bin/res_enc
 ...
 000000000000120c <main>:
@@ -191,11 +225,11 @@ $ objdump -d bin/res_enc
 ...
 ```
 
-Function name "fac" is encrypted.
+この例では，`fac`という関数名を`foo`というキーを用いて難読化しています．実際，逆アセンブルした結果，元々は`fac`という関数名だった部分が`�0,`になっています．
 
 ## GOT overwrite
 
-Overwrites the GOT section with a specified value
+GOTセクションを書き換えることで，指定された共有ライブラリ関数を，別の指定された関数への呼び出しに置換します
 
 ```
 $ cattleya -i bin/got --got --got-l system --got-f secret -o bin/res_got
@@ -205,7 +239,27 @@ $ ./bin/res_got
 secret function called
 ```
 
-As shown below, only the system function is called in the main function as far as disassembly is concerned:
+この例では，`--got-l`オプションに共有ライブラリ関数として`system`を，`--got-f`オプションに置換先の関数として`secret`を指定しています．入力として与えられている`bin/got`バイナリは`bin/got.c`をコンパイルしたもので，`main`内で`system`関数を呼び出していて，`secret`関数はどこからも呼び出されていません：
+
+```C
+// gcc got.c -no-pie -o got
+#include <stdio.h>
+#include <stdlib.h>
+
+int secret(char* s) {
+    if (s[0] == 's' && s[1] == 'e' && s[2] == 'c' && s[3] == 'r' && s[4] == 'e' && s[5] == 't' && s[6] == '?') {
+        printf("secret function called\n");
+    }
+
+    return 0;
+}
+
+int main() {
+    system("secret?\n");
+}
+```
+
+`main`の逆アセンブル結果を見る限りは，`system`関数の呼び出ししか見えませんが，実際は今回の難読化により`secret`関数が`secret?`という引数で呼び出されているので，実行すると標準出力に`secret function called`と表示されます：
 
 ```
 $ objdump -d bin/res_got
@@ -221,11 +275,14 @@ $ objdump -d bin/res_got
   4011fd:       5d                      pop    %rbp
   4011fe:       c3                      ret
 ...
+
+$ ./bin/res_got
+secret function called
 ```
 
-# Recursive option
+# ディレクトリに対して再帰的に難読化を適用する
 
-By specifying the directory name in the recursive option, the same obfuscation can be applied to all ELF files in that directory:
+`--recursive`オプション（もしくは`-r`）を用いてディレクトリを指定することで，そのディレクトリ内にある全てのELFファイルに対して同じ難読化を適用することができます．
 
 ```
 $ tree recursive_sample
@@ -237,6 +294,7 @@ recursive_sample
 
 $ cattleya -r recursive_sample --symbol
 ...
+
 $ tree obfuscated_dir
 tree obfuscated_dir
 obfuscated_dir
@@ -247,8 +305,4 @@ obfuscated_dir
 1 directory, 2 files
 ```
 
-# test
-
-```
-$ cargo test
-```
+この例では，`recursive_sample`ディレクトリ内にある2つのELFファイルに対して，シンボル名隠蔽の難読化を適用しています．結果は自動的に`obfuscated_dir`ディレクトリ内に，元のディレクトリ構造を保ったまま配置されます．
