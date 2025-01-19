@@ -124,10 +124,7 @@ fn main() -> Result<()> {
 
 fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> Result<()> {
     let loader = obfus::Obfuscator::open(input_path, output_path);
-    let mut obfuscator = match loader {
-        Ok(obfuscator) => obfuscator,
-        Err(e) => return Err(e),
-    };
+    let mut obfuscator = loader?;
 
     println!("start obfuscating {}...", input_path);
 
