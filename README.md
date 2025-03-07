@@ -1,10 +1,11 @@
 # cattleya
-An ELF obfuscator written in Rust
+ELF obfuscator written in Rust
 
 > [!NOTE]
 > [日本語版のREADME](./README_ja.md)もあります（README in Japanese is also available）
 
 # How to use
+
 ```
 $ cattleya -h
 A CLI application to obfuscate ELF file(s)
@@ -205,7 +206,7 @@ $ ./bin/res_got
 secret function called
 ```
 
-As shown below, only the system function is called in the main function as far as disassembly is concerned:
+As shown below, only the system function is called in the main function as far as disassembly of `main` is concerned:
 
 ```
 $ objdump -d bin/res_got
@@ -252,3 +253,5 @@ obfuscated_dir
 ```
 $ cargo test
 ```
+
+By running this command, examples of binaries obfuscated using each obfuscation methods will be created in the bin directory.
