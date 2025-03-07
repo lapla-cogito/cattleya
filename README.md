@@ -255,3 +255,5 @@ $ cargo test
 ```
 
 By running this command, examples of binaries obfuscated using each obfuscation methods will be created in the bin directory.
+
+Note that all tests are defined in `src/main.rs`. Some tests require external tools such as `readelf` and `nm`, and some tests need an environment capable of executing ELF files.
