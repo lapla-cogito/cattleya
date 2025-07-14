@@ -111,7 +111,7 @@ fn main() -> Result<()> {
             match exec_obfus(entry.to_str().unwrap(), &output_path, &args) {
                 Ok(_) => println!("obfuscation done!"),
                 Err(e) => {
-                    eprintln!("error while obfuscation of {}: {}", output_path, e);
+                    eprintln!("error while obfuscation of {output_path}: {e}");
                     std::fs::remove_file(&output_path).unwrap();
                     continue;
                 }
@@ -126,42 +126,42 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> Result<()> {
     let loader = obfus::Obfuscator::open(input_path, output_path);
     let mut obfuscator = loader?;
 
-    println!("start obfuscating {}...", input_path);
+    println!("start obfuscating {input_path}...");
 
     if args.class {
         match obfuscator.change_class() {
             Ok(_) => println!("change class metadata success"),
-            Err(e) => eprintln!("failed to change class metadata: {:?}", e),
+            Err(e) => eprintln!("failed to change class metadata: {e:?}"),
         }
     }
     if args.endian {
         match obfuscator.change_endian() {
             Ok(_) => println!("change endian metadata success"),
-            Err(e) => eprintln!("failed to change class metadata: {:?}", e),
+            Err(e) => eprintln!("failed to change class metadata: {e:?}"),
         }
     }
     if args.sechdr {
         match obfuscator.nullify_sec_hdr() {
             Ok(_) => println!("nullify section headers success"),
-            Err(e) => eprintln!("failed to nullify section header: {:?}", e),
+            Err(e) => eprintln!("failed to nullify section header: {e:?}"),
         }
     }
     if args.symbol {
         match obfuscator.nullify_section(".strtab") {
             Ok(_) => println!("nullify symbol table success"),
-            Err(e) => eprintln!("failed to nullify symbol table: {:?}", e),
+            Err(e) => eprintln!("failed to nullify symbol table: {e:?}"),
         }
     }
     if args.comment {
         match obfuscator.nullify_section(".comment") {
             Ok(_) => println!("nullify comment section success"),
-            Err(e) => eprintln!("failed to nullify comment section: {:?}", e),
+            Err(e) => eprintln!("failed to nullify comment section: {e:?}"),
         }
     }
     if !args.section.is_empty() {
         match obfuscator.nullify_section(&args.section) {
             Ok(_) => println!("nullify section {:?} success", &args.section),
-            Err(e) => eprintln!("failed to nullify section: {:?}", e),
+            Err(e) => eprintln!("failed to nullify section: {e:?}"),
         }
     }
     if args.got {
@@ -173,7 +173,7 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> Result<()> {
 
         match obfuscator.got_overwrite(&args.got_l, &args.got_f) {
             Ok(_) => println!("GOT overwrite success"),
-            Err(e) => eprintln!("failed to GOT overwrite: {:?}", e),
+            Err(e) => eprintln!("failed to GOT overwrite: {e:?}"),
         }
     }
     if args.encrypt {
@@ -185,7 +185,7 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> Result<()> {
 
         match obfuscator.encrypt_function_name(&args.encrypt_f, &args.encrypt_key) {
             Ok(_) => println!("encrypt function name success"),
-            Err(e) => eprintln!("failed to encrypt function name: {:?}", e),
+            Err(e) => eprintln!("failed to encrypt function name: {e:?}"),
         }
     }
 
