@@ -191,7 +191,6 @@ impl Obfuscator {
             }
         }
 
-        // section not found
         Err(crate::error::Error::NotFound(
             "section not found".to_owned() + section,
         ))
@@ -212,9 +211,8 @@ impl Obfuscator {
     pub fn nullify_sec_hdr(&mut self) -> crate::error::Result<()> {
         for i in 0..self.elf_hdr.e_shnum as u64 {
             let offset = self.elf_hdr.e_shoff + i * self.elf_hdr.e_shentsize as u64;
-            for j in offset..offset + self.elf_hdr.e_shentsize as u64 {
-                self.output[j as usize] = 0;
-            }
+            self.output[offset as usize..(offset + self.elf_hdr.e_shentsize as u64) as usize]
+                .fill(0);
         }
 
         Ok(())
@@ -222,10 +220,7 @@ impl Obfuscator {
 
     pub fn nullify_section(&mut self, section: &str) -> crate::error::Result<()> {
         let (section_addr, section_size, _, _) = self.get_section(section)?;
-
-        for i in section_addr..section_addr + section_size {
-            self.output[i] = 0;
-        }
+        self.output[section_addr..section_addr + section_size].fill(0);
 
         Ok(())
     }
