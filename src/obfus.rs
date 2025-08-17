@@ -375,11 +375,28 @@ impl Obfuscator {
         output_str: &str,
         output_path: &str,
     ) -> crate::error::Result<()> {
+        if !self.is_64bit() {
+            return Err(crate::error::Error::InvalidOption(
+                "whitespace obfuscation only supports 64-bit ELF",
+            ));
+        }
+
         let whitespace_program = crate::util::gen_print_whitespace(output_str);
 
-        let mut new_output = vec![0; self.output.len() + whitespace_program.len()];
+        // concat the whitespace interpreter binary
+        let whitespace_interpreter_path = std::env::current_dir()
+            .unwrap()
+            .join("whitespace/interpreter");
+        let whitespace_interpreter =
+            std::fs::read(whitespace_interpreter_path).map_err(crate::error::Error::Io)?;
+        let tmp = whitespace_interpreter[0x1040..].to_vec();
+
+        let mut new_output = vec![0; self.output.len() + whitespace_program.len() + tmp.len()];
         new_output[0..self.output.len()].copy_from_slice(&self.output);
-        new_output[self.output.len()..].copy_from_slice(whitespace_program.as_bytes());
+        new_output[self.output.len()..self.output.len() + tmp.len()].copy_from_slice(&tmp);
+        new_output[self.output.len() + tmp.len()..].copy_from_slice(whitespace_program.as_bytes());
+
+        let new_entry = self.output.len();
 
         let _ = std::fs::remove_file(output_path);
 
@@ -390,9 +407,16 @@ impl Obfuscator {
             .truncate(true)
             .open(output_path)
             .map_err(crate::error::Error::CreateFile)?;
+
         output_file
             .write_all(&new_output)
             .map_err(crate::error::Error::Io)?;
+
+        self.output =
+            unsafe { memmap2::MmapMut::map_mut(&output_file).map_err(crate::error::Error::Mmap)? };
+
+        self.elf_hdr.e_entry = new_entry as u64;
+        self.output[24..32].copy_from_slice(&self.elf_hdr.e_entry.to_le_bytes());
 
         Ok(())
     }
