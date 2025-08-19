@@ -4,6 +4,19 @@ ELF obfuscator written in Rust
 > [!NOTE]
 > [日本語版のREADME](./README_ja.md)もあります（README in Japanese is also available）
 
+<!-- TOC -->
+
+- [How to use](#how-to-use)
+- [Obfuscation methods](#obfuscation-methods)
+  - [Endian obfuscation](#endian-obfuscation)
+  - [Architecture obfuscation](#architecture-obfuscation)
+  - [Section header obfuscation](#section-header-obfuscation)
+  - [Nullify symbol names obfuscation](#nullify-symbol-names-obfuscation)
+  - [Nullify comments obfuscation](#nullify-comments-obfuscation)
+  - [Function name encryption](#function-name-encryption)
+  - [GOT overwrite obfuscation](#got-overwrite)
+- [Test](#test)
+
 # How to use
 
 ```
@@ -63,7 +76,7 @@ $ objdump -d obfuscated
 objdump: obfuscated: file format not recognized
 ```
 
-## Architcture obfuscation
+## Architecture obfuscation
 Obfuscates by changing the part of the ELF file that indicates the architecture (32bit or 64bit)
 
 ```
@@ -105,25 +118,27 @@ $ cattleya -i input --symbol
 start obfuscating input...
 obfuscation done!
 
-$ readelf -x29 input
+$ readelf -p .strtab input
 
-Hex dump of section '.strtab':
-  0x00000000 00536372 74312e6f 005f5f61 62695f74 .Scrt1.o.__abi_t
-  0x00000010 61670063 72747374 7566662e 63006465 ag.crtstuff.c.de
-  0x00000020 72656769 73746572 5f746d5f 636c6f6e register_tm_clon
-  0x00000030 6573005f 5f646f5f 676c6f62 616c5f64 es.__do_global_d
-  0x00000040 746f7273 5f617578 00636f6d 706c6574 tors_aux.complet
+String dump of section '.strtab':
+  [     1]  Scrt1.o
+  [     9]  __abi_tag
+  [    13]  crtstuff.c
+  [    1e]  deregister_tm_clones
+  [    33]  __do_global_dtors_aux
+  [    49]  completed.0
+  [    55]  __do_global_dtors_aux_fini_array_entry
+  [    7c]  frame_dummy
+  [    88]  __frame_dummy_init_array_entry
+  [    a7]  main.c
+  [    ae]  __FRAME_END__
+  [    bc]  _DYNAMIC
 ...
 
-$ readelf -x29 obfuscated
+$ readelf -p .strtab obfuscated
 
-Hex dump of section '':
-  0x00000000 00000000 00000000 00000000 00000000 ................
-  0x00000010 00000000 00000000 00000000 00000000 ................
-  0x00000020 00000000 00000000 00000000 00000000 ................
-  0x00000030 00000000 00000000 00000000 00000000 ................
-  0x00000040 00000000 00000000 00000000 00000000 ................
-...
+String dump of section '.strtab':
+  No strings found in this section.
 ```
 
 ## Nullify comments obfuscation
@@ -135,19 +150,15 @@ $ cattleya -i input --comment
 start obfuscating input...
 obfuscation done!
 
-$ readelf -x27 input
+$ readelf -p .comment input
 
-Hex dump of section '.comment':
-  0x00000000 4743433a 20285562 756e7475 2031312e GCC: (Ubuntu 11.
-  0x00000010 342e302d 31756275 6e747531 7e32322e 4.0-1ubuntu1~22.
-  0x00000020 30342920 31312e34 2e3000            04) 11.4.0.
+String dump of section '.comment':
+  [     0]  GCC: (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0
 
-$ readelf -x29 obfuscated
+$ readelf -p .comment obfuscated
 
-Hex dump of section '.comment':
-  0x00000000 00000000 00000000 00000000 00000000 ................
-  0x00000010 00000000 00000000 00000000 00000000 ................
-  0x00000020 00000000 00000000 000000            ...........
+String dump of section '.comment':
+  No strings found in this section.
 ```
 
 ## Function name encryption
@@ -199,6 +210,23 @@ Function name "fac" is encrypted.
 Overwrites the GOT section with a specified value
 
 ```
+$ cat bin/got.c
+// gcc got.c -no-pie -o got
+#include <stdio.h>
+#include <stdlib.h>
+
+int secret(char* s) {
+    if (s[0] == 's' && s[1] == 'e' && s[2] == 'c' && s[3] == 'r' && s[4] == 'e' && s[5] == 't' && s[6] == '?') {
+        printf("secret function called\n");
+    }
+
+    return 0;
+}
+
+int main() {
+    system("secret?\n");
+}
+
 $ cattleya -i bin/got --got --got-l system --got-f secret -o bin/res_got
 start obfuscating bin/got...
 obfuscation done!
@@ -248,7 +276,7 @@ obfuscated_dir
 1 directory, 2 files
 ```
 
-# test
+# Test
 
 ```
 $ cargo test
