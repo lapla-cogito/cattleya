@@ -1,3 +1,4 @@
+mod dwarf;
 mod error;
 mod obfus;
 mod util;
@@ -68,6 +69,16 @@ struct Args {
     encrypt_f: String,
     #[arg(long, help = "encryption key", default_value = "")]
     encrypt_key: String,
+    #[arg(
+        long,
+        help = "swap two symbol names in the .symtab",
+        default_value = "false"
+    )]
+    swap_symbol: bool,
+    #[arg(long, help = "first symbol name to swap", default_value = "")]
+    swap_symbol_a: String,
+    #[arg(long, help = "second symbol name to swap", default_value = "")]
+    swap_symbol_b: String,
 }
 
 fn main() -> Result<()> {
@@ -174,6 +185,21 @@ fn exec_obfus(input_path: &str, output_path: &str, args: &Args) -> Result<()> {
         match obfuscator.got_overwrite(&args.got_l, &args.got_f) {
             Ok(_) => println!("GOT overwrite success"),
             Err(e) => eprintln!("failed to GOT overwrite: {e:?}"),
+        }
+    }
+    if args.swap_symbol {
+        if args.swap_symbol_a.is_empty() || args.swap_symbol_b.is_empty() {
+            return Err(Error::InvalidOption(
+                "two symbol names are required for swap-symbol",
+            ));
+        }
+
+        match obfuscator.swap_symbol_names(&args.swap_symbol_a, &args.swap_symbol_b) {
+            Ok(_) => println!(
+                "swap symbol names {:?} <-> {:?} success",
+                &args.swap_symbol_a, &args.swap_symbol_b
+            ),
+            Err(e) => eprintln!("failed to swap symbol names: {e:?}"),
         }
     }
     if args.encrypt {
@@ -348,5 +374,217 @@ mod tests {
             .output()
             .expect("failed to execute nm");
         assert!(!output.stdout.windows(3).any(|w| w == b"fac"));
+    }
+
+    #[test]
+    fn swap_symbol_names() {
+        let nm_orig = std::process::Command::new("nm")
+            .args(["bin/test_64bit"])
+            .output()
+            .expect("failed to execute nm");
+        let orig = String::from_utf8(nm_orig.stdout).unwrap();
+        let orig_fac_addr = orig
+            .lines()
+            .find(|l| l.ends_with(" T fac"))
+            .map(|l| l.split_whitespace().next().unwrap().to_string())
+            .expect("fac symbol expected in baseline");
+        let orig_fib_addr = orig
+            .lines()
+            .find(|l| l.ends_with(" T fib"))
+            .map(|l| l.split_whitespace().next().unwrap().to_string())
+            .expect("fib symbol expected in baseline");
+        assert_ne!(orig_fac_addr, orig_fib_addr);
+
+        {
+            let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_swap_symbol");
+            let mut obfuscator = loader.unwrap();
+            obfuscator.swap_symbol_names("fac", "fib").unwrap();
+        }
+
+        // After swapping, `nm` must still print both names exactly once, but the addresses associated with them must be flipped.
+        let nm_swapped = std::process::Command::new("nm")
+            .args(["bin/res_swap_symbol"])
+            .output()
+            .expect("failed to execute nm");
+        let swapped = String::from_utf8(nm_swapped.stdout).unwrap();
+
+        let new_fac_addr = swapped
+            .lines()
+            .find(|l| l.ends_with(" T fac"))
+            .map(|l| l.split_whitespace().next().unwrap().to_string())
+            .expect("fac symbol expected after swap");
+        let new_fib_addr = swapped
+            .lines()
+            .find(|l| l.ends_with(" T fib"))
+            .map(|l| l.split_whitespace().next().unwrap().to_string())
+            .expect("fib symbol expected after swap");
+
+        assert_eq!(new_fac_addr, orig_fib_addr);
+        assert_eq!(new_fib_addr, orig_fac_addr);
+    }
+
+    #[test]
+    fn swap_symbol_names_unknown() {
+        let loader =
+            crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_swap_symbol_unknown");
+        let mut obfuscator = loader.unwrap();
+        let result = obfuscator.swap_symbol_names("fac", "this_symbol_does_not_exist");
+        assert!(matches!(result, Err(crate::Error::NotFound(_))));
+    }
+
+    #[test]
+    fn swap_symbol_names_same() {
+        let loader = crate::obfus::Obfuscator::open("bin/test_64bit", "bin/res_swap_symbol_same");
+        let mut obfuscator = loader.unwrap();
+        let result = obfuscator.swap_symbol_names("fac", "fac");
+        assert!(matches!(result, Err(crate::Error::InvalidOption(_))));
+    }
+
+    /// Building a fresh `-g` binary and checking that `addr2line` (which reads
+    /// DWARF, not `.symtab`) reports the *swapped* names too. This verifies
+    /// that the in-place swap of inline `DW_FORM_string` bytes inside
+    /// `.debug_info` keeps symbol-table and DWARF views consistent.
+    #[test]
+    fn swap_symbol_names_dwarf_consistency() {
+        if std::process::Command::new("gcc")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
+            eprintln!("skipping: gcc not available");
+            return;
+        }
+        if std::process::Command::new("addr2line")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
+            eprintln!("skipping: addr2line not available");
+            return;
+        }
+
+        let dbg_src = "bin/main.c";
+        let dbg_bin = "bin/test_64bit_dbg";
+        let out_bin = "bin/res_swap_symbol_dwarf";
+
+        let status = std::process::Command::new("gcc")
+            .args(["-g", "-no-pie", dbg_src, "-o", dbg_bin])
+            .status()
+            .expect("failed to invoke gcc");
+        assert!(status.success(), "gcc failed to build {dbg_bin}");
+
+        let sec = std::process::Command::new("readelf")
+            .args(["-S", dbg_bin])
+            .output()
+            .expect("failed to execute readelf");
+        let sec_out = String::from_utf8_lossy(&sec.stdout);
+        assert!(
+            sec_out.contains(".debug_info"),
+            "baseline binary lacks .debug_info; toolchain may have stripped it"
+        );
+
+        {
+            let loader = crate::obfus::Obfuscator::open(dbg_bin, out_bin);
+            let mut obfuscator = loader.unwrap();
+            obfuscator.swap_symbol_names("fac", "fib").unwrap();
+        }
+
+        let nm = std::process::Command::new("nm")
+            .args([out_bin])
+            .output()
+            .expect("failed to execute nm");
+        let nm_out = String::from_utf8(nm.stdout).unwrap();
+        let addr_of = |name: &str| -> String {
+            nm_out
+                .lines()
+                .find(|l| l.ends_with(&format!(" T {name}")))
+                .map(|l| l.split_whitespace().next().unwrap().to_string())
+                .unwrap_or_else(|| panic!("symbol {name} not found in nm output"))
+        };
+        let fac_addr = addr_of("fac");
+        let fib_addr = addr_of("fib");
+
+        let addr2line = |addr: &str| -> String {
+            let out = std::process::Command::new("addr2line")
+                .args(["-f", "-e", out_bin, addr])
+                .output()
+                .expect("failed to execute addr2line");
+            String::from_utf8(out.stdout)
+                .unwrap()
+                .lines()
+                .next()
+                .unwrap()
+                .trim()
+                .to_string()
+        };
+
+        assert_eq!(addr2line(&fac_addr), "fac");
+        assert_eq!(addr2line(&fib_addr), "fib");
+    }
+
+    #[test]
+    fn swap_symbol_names_dwarf_different_length() {
+        if std::process::Command::new("gcc")
+            .arg("--version")
+            .output()
+            .is_err()
+            || std::process::Command::new("addr2line")
+                .arg("--version")
+                .output()
+                .is_err()
+        {
+            eprintln!("skipping: gcc/addr2line not available");
+            return;
+        }
+
+        let dbg_src = "bin/dwarf_diff_len.c";
+        let dbg_bin = "bin/test_64bit_dbg_difflen";
+        let out_bin = "bin/res_swap_symbol_difflen";
+
+        let status = std::process::Command::new("gcc")
+            .args(["-g", "-no-pie", dbg_src, "-o", dbg_bin])
+            .status()
+            .expect("failed to invoke gcc");
+        assert!(status.success());
+
+        {
+            let loader = crate::obfus::Obfuscator::open(dbg_bin, out_bin);
+            let mut obfuscator = loader.unwrap();
+            obfuscator
+                .swap_symbol_names("factorial_function", "fib")
+                .unwrap();
+        }
+
+        let nm = std::process::Command::new("nm")
+            .args([out_bin])
+            .output()
+            .expect("failed to execute nm");
+        let nm_out = String::from_utf8(nm.stdout).unwrap();
+        let addr_of = |name: &str| -> String {
+            nm_out
+                .lines()
+                .find(|l| l.ends_with(&format!(" T {name}")))
+                .map(|l| l.split_whitespace().next().unwrap().to_string())
+                .unwrap_or_else(|| panic!("symbol {name} not found in nm output"))
+        };
+        let fac_addr = addr_of("factorial_function");
+        let fib_addr = addr_of("fib");
+
+        let addr2line = |addr: &str| -> String {
+            let out = std::process::Command::new("addr2line")
+                .args(["-f", "-e", out_bin, addr])
+                .output()
+                .expect("failed to execute addr2line");
+            String::from_utf8(out.stdout)
+                .unwrap()
+                .lines()
+                .next()
+                .unwrap()
+                .trim()
+                .to_string()
+        };
+
+        assert_eq!(addr2line(&fac_addr), "factorial_function");
+        assert_eq!(addr2line(&fib_addr), "fib");
     }
 }

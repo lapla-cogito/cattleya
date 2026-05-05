@@ -14,6 +14,7 @@ ELF obfuscator written in Rust
   - [Nullify symbol names obfuscation](#nullify-symbol-names-obfuscation)
   - [Nullify comments obfuscation](#nullify-comments-obfuscation)
   - [Function name encryption](#function-name-encryption)
+  - [Symbol name swap obfuscation](#symbol-name-swap)
   - [GOT overwrite obfuscation](#got-overwrite)
 - [Test](#test)
 
@@ -26,23 +27,26 @@ A CLI application to obfuscate ELF file(s)
 Usage: cattleya [OPTIONS]
 
 Options:
-  -i, --input <INPUT>              input file name [default: ]
-  -o, --output <OUTPUT>            output file name [default: ]
-  -c, --class                      change architecture class in the ELF
-  -e, --endian                     change endian in the ELF
-  -s, --sechdr                     nullify section header in the ELF
-      --symbol                     nullify symbols in the ELF
-      --comment                    nullify comment section in the ELF
-      --section <SECTION>          nullify section in the ELF [default: ]
-  -r, --recursive <RECURSIVE>      recursive [default: ]
-  -g, --got                        perform GOT overwrite
-      --got-l <GOT_L>              GOT overwrite target library function name [default: ]
-      --got-f <GOT_F>              GOT overwrite target function name [default: ]
-      --encrypt                    encrypt function name with the given key
-      --encrypt-f <ENCRYPT_F>      encryption target function name [default: ]
-      --encrypt-key <ENCRYPT_KEY>  encryption key [default: ]
-  -h, --help                       Print help
-  -V, --version                    Print version
+  -i, --input <INPUT>                  input file name [default: ]
+  -o, --output <OUTPUT>                output file name [default: ]
+  -c, --class                          change architecture class in the ELF
+  -e, --endian                         change endian in the ELF
+  -s, --sechdr                         nullify section header in the ELF
+      --symbol                         nullify symbols in the ELF
+      --comment                        nullify comment section in the ELF
+      --section <SECTION>              nullify section in the ELF [default: ]
+  -r, --recursive <RECURSIVE>          recursive [default: ]
+  -g, --got                            perform GOT overwrite
+      --got-l <GOT_L>                  GOT overwrite target library function name [default: ]
+      --got-f <GOT_F>                  GOT overwrite target function name [default: ]
+      --encrypt                        encrypt function name with the given key
+      --encrypt-f <ENCRYPT_F>          encryption target function name [default: ]
+      --encrypt-key <ENCRYPT_KEY>      encryption key [default: ]
+      --swap-symbol                    swap two symbol names in the .symtab
+      --swap-symbol-a <SWAP_SYMBOL_A>  first symbol name to swap [default: ]
+      --swap-symbol-b <SWAP_SYMBOL_B>  second symbol name to swap [default: ]
+  -h, --help                           Print help
+  -V, --version                        Print version
 ```
 
 Both input and recursive options cannot be empty.
@@ -204,6 +208,44 @@ $ objdump -d bin/res_enc
 ```
 
 Function name "fac" is encrypted.
+
+## Symbol name swap
+
+Swaps the `st_name` field of two `.symtab` entries. The string table itself is left untouched, so both names are still present in the binary, but each one now points at the other function's body. Disassemblers and tools such as `nm` / `objdump` will faithfully render the wrong name at the wrong address, sending static-analysis readers down the wrong call chain.
+
+When the input binary contains DWARF debug information, this method also rewrites `.debug_info` (and `.debug_aranges`). Specifically, it locates the two `DW_TAG_subprogram` DIEs by `DW_AT_name` and swaps their `DW_AT_low_pc` / `DW_AT_high_pc` values.
+
+```
+$ cattleya -i bin/test_64bit --swap-symbol --swap-symbol-a fac --swap-symbol-b fib -o bin/res_swap
+start obfuscating bin/test_64bit...
+swap symbol names "fac" <-> "fib" success
+
+$ nm bin/test_64bit | grep -E ' T (fac|fib)'
+0000000000001149 T fac
+000000000000119d T fib
+
+$ nm bin/res_swap_symbol | grep -E ' T (fac|fib)'
+000000000000119d T fac
+0000000000001149 T fib
+
+$ ./bin/test_64bit
+fac(1)=1
+fib(1)=1
+fac(5)=120
+fib(5)=5
+fac(10)=3628800
+fib(10)=55
+
+$ ./bin/res_swap_symbol
+fac(1)=1
+fib(1)=1
+fac(5)=120
+fib(5)=5
+fac(10)=3628800
+fib(10)=55
+```
+
+Note that this method requires a non-stripped binary (it operates on `.symtab`).
 
 ## GOT overwrite
 
