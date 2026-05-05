@@ -322,6 +322,92 @@ impl Obfuscator {
         Err(crate::error::Error::Obfuscation("failed to overwrite GOT"))
     }
 
+    pub fn swap_symbol_names(&mut self, func_a: &str, func_b: &str) -> crate::error::Result<()> {
+        if self.is_stripped() {
+            return Err(crate::error::Error::InvalidOption(
+                "cannot swap symbol names with stripped binary",
+            ));
+        }
+
+        if func_a == func_b {
+            return Err(crate::error::Error::InvalidOption(
+                "two distinct symbol names are required",
+            ));
+        }
+
+        let idx_a = self.string_table.find(func_a).ok_or_else(|| {
+            crate::error::Error::NotFound("symbol not found: ".to_owned() + func_a)
+        })?;
+        let idx_b = self.string_table.find(func_b).ok_or_else(|| {
+            crate::error::Error::NotFound("symbol not found: ".to_owned() + func_b)
+        })?;
+
+        let (section_addr, section_size, entry_size, _) = self.get_section(".symtab")?;
+        let symtab = &self.input[section_addr..section_addr + section_size];
+
+        let mut entry_a: Option<usize> = None;
+        let mut entry_b: Option<usize> = None;
+
+        for i in 0..section_size / entry_size {
+            let entry = &symtab[i * entry_size..(i + 1) * entry_size];
+            let name_offset = u32::from_le_bytes(entry[0..4].try_into().unwrap()) as usize;
+            if name_offset == idx_a {
+                entry_a = Some(i);
+            } else if name_offset == idx_b {
+                entry_b = Some(i);
+            }
+        }
+
+        let entry_a = entry_a.ok_or_else(|| {
+            crate::error::Error::NotFound("symtab entry not found: ".to_owned() + func_a)
+        })?;
+        let entry_b = entry_b.ok_or_else(|| {
+            crate::error::Error::NotFound("symtab entry not found: ".to_owned() + func_b)
+        })?;
+
+        let off_a = section_addr + entry_a * entry_size;
+        let off_b = section_addr + entry_b * entry_size;
+
+        // st_name is the first 4 bytes of an Elf{32,64}_Sym entry on both classes.
+        let name_a_bytes = (idx_a as u32).to_le_bytes();
+        let name_b_bytes = (idx_b as u32).to_le_bytes();
+
+        self.output[off_a..off_a + 4].copy_from_slice(&name_b_bytes);
+        self.output[off_b..off_b + 4].copy_from_slice(&name_a_bytes);
+        self.apply_dwarf_swap(func_a, func_b)?;
+
+        Ok(())
+    }
+
+    fn apply_dwarf_swap(&mut self, func_a: &str, func_b: &str) -> crate::error::Result<()> {
+        let lookup_section = |name: &str| -> (usize, &[u8]) {
+            match self.get_section(name) {
+                Ok((addr, size, _, _)) if size > 0 => (addr, &self.input[addr..addr + size]),
+                _ => (0, &[]),
+            }
+        };
+
+        if lookup_section(".debug_info").1.is_empty() {
+            return Ok(());
+        }
+
+        let section_map = crate::dwarf::SectionMap {
+            get: |id: gimli::SectionId| -> (usize, &[u8]) { lookup_section(id.name()) },
+        };
+
+        let edits = crate::dwarf::plan_subprogram_swap(&section_map, func_a, func_b)
+            .map_err(|_| crate::error::Error::Obfuscation("failed to parse DWARF"))?;
+
+        for edit in edits {
+            let end = edit.offset + edit.bytes.len();
+            if end <= self.output.len() {
+                self.output[edit.offset..end].copy_from_slice(&edit.bytes);
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn encrypt_function_name(&mut self, function: &str, key: &str) -> crate::error::Result<()> {
         use sha2::digest::Digest as _;
 

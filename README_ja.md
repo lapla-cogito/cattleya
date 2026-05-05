@@ -4,19 +4,20 @@ ELFファイルを入力として，それを様々な手法で難読化するCL
 
 > [!NOTE]
 > 手っ取り早く各難読化が施されたバイナリが欲しい場合，`cargo`と`readelf`，`nm`があってELFバイナリを実行できる環境でこのリポジトリをcloneして次のコマンドを実行してください：
-> 
+>
 > ```
 > $ cargo test
 > ```
-> 
+>
 > これは`src/main.rs`中のテストをまとめて実行するもので，この後で示す各難読化手法のテストが行われます．テストが通れば，`bin`ディレクトリ中に各難読化手法が適用されたバイナリが生成されているはずです．それぞれの難読化手法に対応するバイナリ名は次の通りです：
-> 
+>
 > - エンディアン詐称: `res_endian`
 > - アーキテクチャ詐称: `res_class`
 > - セクションヘッダー情報隠蔽: `res_sechdr`
 > - シンボル名隠蔽: `res_symbol`
 > - コメントセクション隠蔽: `res_comment`
 > - 関数名暗号化: `res_encrypt`
+> - シンボル名スワップ: `res_swap_symbol`
 > - GOT overwrite: `res_got`
 
 # 目次
@@ -29,8 +30,10 @@ ELFファイルを入力として，それを様々な手法で難読化するCL
   - [シンボル名を隠蔽する](#シンボル名を隠蔽する)
   - [コメントセクションを隠蔽する](#コメントセクションを隠蔽する)
   - [関数名を難読化する](#関数名を難読化する)
+  - [シンボル名をスワップする](#シンボル名をスワップする)
   - [GOT overwrite](#got-overwrite)
 - [ディレクトリに対して再帰的に難読化を適用する](#ディレクトリに対して再帰的に難読化を適用する)
+- [テスト](#テスト)
 
 # How to use
 
@@ -41,23 +44,26 @@ A CLI application to obfuscate ELF file(s)
 Usage: cattleya [OPTIONS]
 
 Options:
-  -i, --input <INPUT>              input file name [default: ]
-  -o, --output <OUTPUT>            output file name [default: ]
-  -c, --class                      change architecture class in the ELF
-  -e, --endian                     change endian in the ELF
-  -s, --sechdr                     nullify section header in the ELF
-      --symbol                     nullify symbols in the ELF
-      --comment                    nullify comment section in the ELF
-      --section <SECTION>          nullify section in the ELF [default: ]
-  -r, --recursive <RECURSIVE>      recursive [default: ]
-  -g, --got                        perform GOT overwrite
-      --got-l <GOT_L>              GOT overwrite target library function name [default: ]
-      --got-f <GOT_F>              GOT overwrite target function name [default: ]
-      --encrypt                    encrypt function name with the given key
-      --encrypt-f <ENCRYPT_F>      encryption target function name [default: ]
-      --encrypt-key <ENCRYPT_KEY>  encryption key [default: ]
-  -h, --help                       Print help
-  -V, --version                    Print version
+  -i, --input <INPUT>                  input file name [default: ]
+  -o, --output <OUTPUT>                output file name [default: ]
+  -c, --class                          change architecture class in the ELF
+  -e, --endian                         change endian in the ELF
+  -s, --sechdr                         nullify section header in the ELF
+      --symbol                         nullify symbols in the ELF
+      --comment                        nullify comment section in the ELF
+      --section <SECTION>              nullify section in the ELF [default: ]
+  -r, --recursive <RECURSIVE>          recursive [default: ]
+  -g, --got                            perform GOT overwrite
+      --got-l <GOT_L>                  GOT overwrite target library function name [default: ]
+      --got-f <GOT_F>                  GOT overwrite target function name [default: ]
+      --encrypt                        encrypt function name with the given key
+      --encrypt-f <ENCRYPT_F>          encryption target function name [default: ]
+      --encrypt-key <ENCRYPT_KEY>      encryption key [default: ]
+      --swap-symbol                    swap two symbol names in the .symtab
+      --swap-symbol-a <SWAP_SYMBOL_A>  first symbol name to swap [default: ]
+      --swap-symbol-b <SWAP_SYMBOL_B>  second symbol name to swap [default: ]
+  -h, --help                           Print help
+  -V, --version                        Print version
 ```
 
 `--input`オプションと`--recursive`オプションがどちらも空である実行は許容されません
@@ -227,6 +233,44 @@ $ objdump -d bin/res_enc
 
 この例では，`fac`という関数名を`foo`というキーを用いて難読化しています．実際，逆アセンブルした結果，元々は`fac`という関数名だった部分が`�0,`になっています．
 
+## シンボル名をスワップする
+
+`.symtab`にある2つのシンボルエントリの`st_name`フィールドを入れ替えます．文字列テーブル自体には手を加えないため，どちらの名前もバイナリ内に残ったままですが，それぞれの名前が指す関数の本体がもう片方のものになります．`nm`や`objdump`といった解析ツールは正しく誤った関数名を誤ったアドレスに表示するため，解析者を誤った関数呼び出し関係に誘導することができます．
+
+入力バイナリにDWARFデバッグ情報が含まれている場合，この難読化は`.debug_info`（および`.debug_aranges`）も合わせて書き換えます．具体的には`DW_AT_name`から対象の2つの`DW_TAG_subprogram` DIEを特定し，それらの`DW_AT_low_pc` / `DW_AT_high_pc`の値を入れ替えます．
+
+```
+$ cattleya -i bin/test_64bit --swap-symbol --swap-symbol-a fac --swap-symbol-b fib -o bin/res_swap_symbol
+start obfuscating bin/test_64bit...
+swap symbol names "fac" <-> "fib" success
+
+$ nm bin/test_64bit | grep -E ' T (fac|fib)'
+0000000000001149 T fac
+000000000000119d T fib
+
+$ nm bin/res_swap_symbol | grep -E ' T (fac|fib)'
+000000000000119d T fac
+0000000000001149 T fib
+
+$ ./bin/test_64bit
+fac(1)=1
+fib(1)=1
+fac(5)=120
+fib(5)=5
+fac(10)=3628800
+fib(10)=55
+
+$ ./bin/res_swap_symbol
+fac(1)=1
+fib(1)=1
+fac(5)=120
+fib(5)=5
+fac(10)=3628800
+fib(10)=55
+```
+
+実行結果は元のバイナリと変わりませんが，`nm`で見ると`fac`と`fib`のアドレスが入れ替わっていることが分かります．なお，この難読化は`.symtab`を操作するため，stripされたバイナリでは利用できません．
+
 ## GOT overwrite
 
 GOTセクションを書き換えることで，指定された共有ライブラリ関数を，別の指定された関数への呼び出しに置換します
@@ -306,3 +350,13 @@ obfuscated_dir
 ```
 
 この例では，`recursive_sample`ディレクトリ内にある2つのELFファイルに対して，シンボル名隠蔽の難読化を適用しています．結果は自動的に`obfuscated_dir`ディレクトリ内に，元のディレクトリ構造を保ったまま配置されます．
+
+# テスト
+
+```
+$ cargo test
+```
+
+このコマンドを実行することで，各難読化手法を適用したバイナリのサンプルが`bin`ディレクトリ内に作成されます．
+
+なお，すべてのテストは`src/main.rs`内に定義されています．一部のテストは`readelf`や`nm`，`addr2line`といった外部ツールを必要とし，また一部のテストはELFバイナリを実行できる環境を必要とします．
